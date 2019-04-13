@@ -240,6 +240,14 @@ void waitForNextTimer()
   while (timerRoll==0){}
 
 }
+void face(int dir, ){
+  int kp = 5000;
+  if (dir == 0){ //Facing up
+    int control = kp*accel.YAxis;
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, control);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, -control);
+  }
+}
 /**********************************************************/
 void executeCLC()
 {
@@ -341,6 +349,9 @@ void loop()
     fan_control.write(fanspeed);
   }
 
+  // Read normalized values
+  Vector norm = mpu.readNormalizeGyro();
+  Vector accel = mpu.readNormalizeAccel();
 
 
 /*
@@ -450,8 +461,10 @@ void loop()
       }
   }
 */
+
   
   
+  /*
   float yaw_error = yaw_goal - yaw, kp = 10, kd = 2;
 
   float control = kp * yaw_error + kd * (yaw_error - yaw_error_prev) + 10;
@@ -465,12 +478,9 @@ void loop()
 
   if(timer > 20)
     move_speed = 0;
-  
+  */
 
-  
-  
-
-
+  face(0,accel);
    
 
   /*
@@ -540,14 +550,14 @@ void loop()
   
   if(x_g <= 5000){
   // Output raw
-  Serial.print("X_a = ");
-  Serial.print(x_g);
-  Serial.print(" ");
-  Serial.print("Y_a = ");
-  Serial.println(y_g);
-  Serial.print(" ");
-  Serial.print(" Z_a = ");
-  Serial.println(yaw);
+//  Serial.print("X_a = ");
+//  Serial.print(x_g);
+//  Serial.print(" ");
+//  Serial.print("Y_a = ");
+//  Serial.println(y_g);
+//  Serial.print(" ");
+//  Serial.print(" Z_a = ");
+//  Serial.println(yaw);
   }
   
   /*
