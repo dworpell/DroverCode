@@ -77,10 +77,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define VECTOR_STRUCT_H
 struct Vector
 {
-    float XAxis;
-    float YAxis;
-    float ZAxis;
+    int16_t XAxis;
+    int16_t YAxis;
+    int16_t ZAxis;
 };
+
 #endif
 
 struct Activites
