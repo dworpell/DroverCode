@@ -47,7 +47,7 @@ float timeStep = 0.016;//0.00576;
 // Pitch, Roll and Yaw values
 float pitch = 0;
 float roll = 0;
-float yaw = 0;
+volatile float yaw = 0;
 
 int num_iter = 10000;
 
@@ -56,22 +56,30 @@ int servo_final = 5;
 
 int move_speed = 0;
 int fixed_speed = 170;
+volatile byte timerRoll=0;
+volatile byte I2C_Lock=0;
+volatile byte rollCounter=0;
 
 void setup() 
 {
-  Serial.begin(115200);
-  Serial.println("FINE");
-
+  //byte p=*MCUSR;
+  //Serial.begin(115200);
+  //Serial.println(p);
+  //Serial.println("Q");
   fan_control.attach(fan_esc_pwm);
   fan_control.write(50);
+  
   // Initialize MPU6050
   while(!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G))
   {
-    Serial.println("F");
     Serial.println("Could not find a valid MPU6050 sensor, check wiring!");
     delay(500);
   }
+  while (mpu.getClockSource()!=MPU6050_CLOCK_PLL_XGYRO){mpu.setClockSource(MPU6050_CLOCK_PLL_XGYRO);}
+  while (mpu.getScale()==0){mpu.setScale(3);}
+  while (mpu.getRange()!= MPU6050_RANGE_2G) {mpu.setRange(MPU6050_RANGE_2G);}
 
+  delay(500);
   pinMode(A3,OUTPUT);
   digitalWrite(A3,LOW);
 
@@ -84,11 +92,11 @@ void setup()
   tof_length.init();
   tof_length.setAddress(0x31);
   tof_length.setTimeout(500);
-  
+  delay(100);
   // Calibrate gyroscope. The calibration must be at rest.
   // If you don't want calibrate, comment this line.
   mpu.calibrateGyro();
-
+  delay(100);
   // Set threshold sensivty. Default 3.
   // If you don't want use threshold, comment this line or set 0.
   mpu.setThreshold(1);
@@ -136,7 +144,7 @@ void setup()
     // lower the return signal rate limit (default is 0.25 MCPS)
     tof_width.setSignalRateLimit(0.17);
     // increase laser pulse periods (defaults are 14 and 10 PCLKs)
-    tof_width.setVcselPulsePeriod(VL53L0X::VcselPeriodPreRange, 16);
+    tof_width.setVcselPulsePeriod(VL53L0X::VcselPeriodPreRange, 14);
     tof_width.setVcselPulsePeriod(VL53L0X::VcselPeriodFinalRange, 10);
 
     tof_length.setSignalRateLimit(0.25);
@@ -144,8 +152,15 @@ void setup()
     tof_length.setVcselPulsePeriod(VL53L0X::VcselPeriodPreRange, 14);
     tof_length.setVcselPulsePeriod(VL53L0X::VcselPeriodFinalRange, 10);
   #endif
-
-  tof_width.setMeasurementTimingBudget(43000);
+  //Initalize everything to zero
+  tof_width.setMeasurementTimingBudget(37000);
+  
+  timerRoll=0;
+  I2C_Lock=0;
+  rollCounter=0;
+  yaw=0;
+  roll=0;
+  pitch=0;
   *TCNT2 =0x00; //Set Timer Counter to 0 for safety
   *TIFR2=0xff; //Clear interrupt flags for safety
   *TCCR2A=0x02; //Set to Clear on Timer Compare
@@ -166,18 +181,14 @@ float x_base = 0.0, y_base = 0.0, theta = 0.0, d_prev_l = 0.0, d_prev_r = 0.0;
 float d_l, d_r, del_l, del_r, heading, rad_wheel = 2/2.54, width = 15/2.54;
 float x_g, y_g, x_new = 400,y_new = 250, yaw_goal = 0, yaw_error_prev = 0.0;
 /***************************************************************************/
-volatile byte timerRoll=0;
-volatile byte I2C_Lock=0;
-volatile byte rollCounter=0;
 ISR (TIMER2_COMPA_vect)
 {
   if (I2C_Lock==0)
   {
-
+    sei();
     //should just be hardset to 0.016 s (with a small difference in millis)
     float del_t = timeStep;
     float e_t = timeStep*rollCounter + 0.016;
-    sei();
     d_l = EdgeCountLeft/2520.0 * 2 * PI * rad_wheel;
     d_r = EdgeCountRight/2520.0 * 2 * PI * rad_wheel;
     // Read normalized values
@@ -227,12 +238,13 @@ ISR (TIMER2_COMPA_vect)
     d_prev_l = d_l;
     d_prev_r = d_r;
   
-    //Serial.println(*TCNT2);
     timerRoll=1;
     rollCounter=0;
   }
   else
+  {
     rollCounter++;
+  }
 }
 void waitForNextTimer()
 {
@@ -256,13 +268,18 @@ void loop()
   
   
   /***************************************************************************/ 
+  //If power is lost to the TOF sesnor. All the arduino bricks.
+  //TOF sensors work in the way I expected them to. Continous will instantly read given
+  //The time-alotted period has passed. The Timing budget of 37ms therefore means that after
+  //37ms since the previous read, the timer will "instantly" read the next call.
+
+  // time_I2C_LOCK ==1 -> min(timing_budget-(time_current_read - time_prev_read)), 0) + time_of_I2C_Read
   waitForNextTimer();
   I2C_Lock=1;
   float x_g_raw = tof_width.readRangeContinuousMillimeters();
   I2C_Lock=0;
   waitForNextTimer();
   I2C_Lock=1;
-  //Serial.println(millis()-tas);
   float y_g_raw = tof_length.readRangeContinuousMillimeters();
   I2C_Lock=0;
   /*****************************************************************************/
@@ -451,7 +468,6 @@ void loop()
   }
 */
   
-  
   float yaw_error = yaw_goal - yaw, kp = 10, kd = 2;
 
   float control = kp * yaw_error + kd * (yaw_error - yaw_error_prev) + 10;
@@ -460,12 +476,10 @@ void loop()
   set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, move_speed - control);
 
   yaw_error_prev = yaw_error;
-
   timer++;
 
   if(timer > 20)
     move_speed = 0;
-  
 
   
   
@@ -545,7 +559,7 @@ void loop()
   Serial.print(" ");
   Serial.print("Y_a = ");
   Serial.println(y_g);
-  Serial.print(" ");
+  //Serial.print(" ");
   Serial.print(" Z_a = ");
   Serial.println(yaw);
   }

@@ -23,6 +23,12 @@
 #define OCR2A ((volatile byte *)0xB3)
 #define OCR2B ((volatile byte *)0xB4)
 
+/*#define MCUSR ((volatile byte *)0x55)
+#define WDTCSR ((volatile byte *)0xB4)
+//#define MCUSR ((volatile byte *)0xB4)
+//#define MCUSR ((volatile byte *)0xB4)
+//#define MCUSR ((volatile byte *)0xB4)*/
+
 
 byte Encoder0B,Encoder0A,Encoder1A,Encoder1B;
 int32_t EdgeCountRight=0;
