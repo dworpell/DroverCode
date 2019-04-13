@@ -240,7 +240,7 @@ void waitForNextTimer()
   while (timerRoll==0){}
 
 }
-void face(int dir, ){
+void face(int dir, ax, ay){
   int kp = 5000;
   if (dir == 0){ //Facing up
     int control = kp*accel.YAxis;
@@ -350,7 +350,7 @@ void loop()
   }
 
   // Read normalized values
-  Vector norm = mpu.readNormalizeGyro();
+  //Vector norm = mpu.readNormalizeGyro();
   Vector accel = mpu.readNormalizeAccel();
 
 
