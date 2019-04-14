@@ -12,6 +12,10 @@
 
 #define LONG_RANGE
 //#define HIGH_ACCURACY
+#define UP 0
+#define DOWN 1
+#define RIGHT 2
+#define LEFT 3
 
 MPU6050 mpu;
 VL53L0X tof_width;
@@ -22,6 +26,7 @@ Servo fan_control;
 
 MovingAverageFilter tof_width_filter(5);
 MovingAverageFilter tof_length_filter(5);
+MovingAverageFilter accel_x(5);
 
 int servo_horn_pin = 13;
 
@@ -63,7 +68,7 @@ volatile byte rollCounter=0;
 void setup() 
 {
   //byte p=*MCUSR;
-  //Serial.begin(115200);
+  Serial.begin(115200);
   //Serial.println(p);
   //Serial.println("Q");
   fan_control.attach(fan_esc_pwm);
@@ -166,7 +171,7 @@ void setup()
   *TCCR2B=0x00;
   *OCR2A=249;   
   *TIMSK2 = 0x02; // Enables Interrupts on OCRA = TCNT2
-  *TCCR2B = 0x07; // Starts the timer
+ // *TCCR2B = 0x07; // Starts the timer
   
   delay(5000);
 }
@@ -201,11 +206,39 @@ void waitForNextTimer()
   while (timerRoll==0){}
 
 }
-/**********************************************************/
-void readTOFSensor {
-  if (
+
+void face(int dir, int ax, int ay, int az){
+  float kp = .05;
+  if (dir == UP){ //Facing up
+    int control = kp*((float)(ay));
+    Serial.println(control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, control);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, -control);
+  }
+  else if (dir ==DOWN) {
+    int control = -1*kp*((float)(ay));
+    Serial.println(control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, control);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, -control);
+  }
+  else if (dir ==LEFT) {
+    int control = -1*kp*((float)(ax));
+    Serial.println(control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, control);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, -control);
+  }
+  else if (dir ==RIGHT) {
+    int control = kp*((float)(ax));
+    Serial.println(control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, control);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, -control);
+  }
 }
+/********************/
 byte startflag=0;
+volatile int16_t prev_filteredX=0;
+volatile int16_t prev_filteredY=0;
+volatile int16_t prev_filteredZ=0;
 void loop()
 { 
   /***************************************************************************/ 
@@ -215,91 +248,164 @@ void loop()
   //37ms since the previous read, the timer will "instantly" read the next call.
 
   // time_I2C_LOCK ==1 -> min(timing_budget-(time_current_read - time_prev_read)), 0) + time_of_I2C_Read
-  waitForNextTimer();
+ /* waitForNextTimer();
   I2C_Lock=1;
   float x_g_raw = tof_width.readRangeContinuousMillimeters();
   I2C_Lock=0;
   waitForNextTimer();
   I2C_Lock=1;
   float y_g_raw = tof_length.readRangeContinuousMillimeters();
-  I2C_Lock=0;
+  I2C_Lock=0;*/
   /*****************************************************************************/
-  if(x_g_raw <= 3000)
+  /*if(x_g_raw <= 3000)
     x_g = tof_width_filter.process(x_g_raw) - 8;
 
   if(y_g_raw <= 3000)
     y_g = tof_length_filter.process(y_g_raw);
- 
+ */
   if(Serial.available())
   {
     barrier_flag = 0;
     edge_flag = 0;
     a = Serial.read();
-    if(a == '2')
-    {
-      move_speed = -fixed_speed;
-      timer = 0;
-      /*  
-      for(int i = 0; i< num_iter; i++)
-        backward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
-      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-      */
-    }  
-    if(a == '1')
-    {
-      move_speed = fixed_speed;
-      timer = 0;
-      /*
-      for(int i = 0; i< num_iter; i++)
-        forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
-      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-      */
-    }      
-    if(a == '3')
-    {
-      move_speed = 0;
-      timer = 0;
-      yaw_goal = yaw_goal + 5;
-      /*
-      for(int i = 0; i< num_iter; i++)
-        left(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
-      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-      */
-    } 
-    if(a == '4')
-    {
-      move_speed = 0;
-      timer = 0;
-      yaw_goal = yaw_goal - 5;
-      /*
-      for(int i = 0; i< num_iter; i++)
-        right(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
-      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-      */
-    }  
-    if(a == '5')
-    {
-      fanspeed=50;
-      move_speed = 0;
-      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-    }
-    
-    if(a=='6')
-      fanspeed=170;
-    
-    if(a == '7')
-      fanspeed -= 10;
-
-    if(a == '8')
-      fanspeed += 10;
-
-    if(a == '9')
-      startflag = 1;
-     
-    fan_control.write(fanspeed);
+//    if(a == '2')
+//    {
+//      move_speed = -fixed_speed;
+//      timer = 0;
+//      /*  
+//      for(int i = 0; i< num_iter; i++)
+//        backward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
+//      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+//      */
+//    }  
+//    if(a == '1')
+//    {
+//      move_speed = fixed_speed;
+//      timer = 0;
+//      /*
+//      for(int i = 0; i< num_iter; i++)
+//        forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
+//      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+//      */
+//    }      
+//    if(a == '3')
+//    {
+//      move_speed = 0;
+//      timer = 0;
+//      yaw_goal = yaw_goal + 5;
+//      /*
+//      for(int i = 0; i< num_iter; i++)
+//        left(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
+//      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+//      */
+//    } 
+//    if(a == '4')
+//    {
+//      move_speed = 0;
+//      timer = 0;
+//      yaw_goal = yaw_goal - 5;
+//      /*
+//      for(int i = 0; i< num_iter; i++)
+//        right(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
+//      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+//      */
+//    }  
+//    if(a == '5')
+//    {
+//      fanspeed=50;
+//      move_speed = 0;
+//      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+//    }
+//    
+//    if(a=='6')
+//      fanspeed=170;
+//    
+//    if(a == '7')
+//      fanspeed -= 10;
+//
+//    if(a == '8')
+//      fanspeed += 10;
+//
+//    if(a == '9')
+//      startflag = 1;
+//     
+//    fan_control.write(fanspeed);
   }
   
-  Vector accel = mpu.readNormalizeAccel();
+  Vector accel = mpu.readRawAccel();
+
+  //Serial.println("t");
+  fan_control.write(170);
+  int16_t filteredValX = (accel.XAxis + prev_filteredX)/2;
+  prev_filteredX=filteredValX;
+  int16_t filteredValY = (accel.YAxis + prev_filteredY)/2;
+  prev_filteredY=filteredValY;
+  int16_t filteredValZ = (accel.ZAxis + prev_filteredZ)/2;
+  prev_filteredZ=filteredValZ;
+  face(UP,filteredValX,filteredValY,filteredValZ);
+  for (int i=0; i<500; i++)
+  {
+    Serial.println("b");
+    accel = mpu.readRawAccel();
+    Serial.print(accel.XAxis);
+    Serial.print(" ");
+    Serial.print(accel.YAxis);
+    Serial.print(" ");
+    Serial.println(accel.ZAxis);
+    filteredValY = (accel.YAxis + prev_filteredY)/2;
+    prev_filteredY=filteredValY;
+    face(UP,filteredValX,filteredValY,filteredValZ); 
+    delay(20);
+  }
+  Serial.println("RIGHT");
+  delay(500);
+  for (int i=0; i<500; i++)
+  {
+    
+    Serial.print(accel.XAxis);
+    Serial.print(" ");
+    Serial.print(accel.YAxis);
+    Serial.print(" ");
+    Serial.println(accel.ZAxis);
+    accel = mpu.readRawAccel();
+    Serial.println("b");
+    filteredValX = (accel.XAxis + prev_filteredX)/2;
+    prev_filteredX=filteredValX;
+    face(RIGHT,filteredValX,filteredValY,filteredValZ); 
+    delay(20);
+  }
+  Serial.println("DOWN");
+  delay(500);
+    for (int i=0; i<500; i++)
+  {
+    Serial.print(accel.XAxis);
+    Serial.print(" ");
+    Serial.print(accel.YAxis);
+    Serial.print(" ");
+    Serial.println(accel.ZAxis);
+    accel = mpu.readRawAccel();
+    Serial.println("b");
+    filteredValY = (accel.YAxis + prev_filteredY)/2;
+    prev_filteredY=filteredValY;
+    face(DOWN,filteredValX,filteredValY,filteredValZ); 
+    delay(20);
+  }
+  Serial.println("LEFT");
+  delay(500);
+    for (int i=0; i<500; i++)
+  {
+    Serial.print(accel.XAxis);
+    Serial.print(" ");
+    Serial.print(accel.YAxis);
+    Serial.print(" ");
+    Serial.println(accel.ZAxis);
+    accel = mpu.readRawAccel();
+    Serial.println("b");
+    filteredValX = (accel.XAxis + prev_filteredX)/2;
+    prev_filteredX=filteredValX;
+    face(LEFT,filteredValX,filteredValY,filteredValZ); 
+    delay(20);
+  }
   /*
   float yaw_error = yaw_goal - yaw, kp = 10, kd = 2;
 
@@ -357,4 +463,5 @@ void loop()
       //forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 180);
   }
   */
+  delay(20);
 }

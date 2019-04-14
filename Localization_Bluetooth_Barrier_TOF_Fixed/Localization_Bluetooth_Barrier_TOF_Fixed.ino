@@ -13,6 +13,11 @@
 #define LONG_RANGE
 //#define HIGH_ACCURACY
 
+#define UP 0
+#define DOWN 180
+#define RIGHT 90
+#define LEFT 270
+
 MPU6050 mpu;
 VL53L0X tof_width;
 VL53L0X tof_length;
@@ -38,6 +43,7 @@ int motor_right_in_2 = 11;
 
 int barrier_flag = 0;
 int edge_flag = 0;
+uint8_t TOFCounter=0;
 
 int fanspeed = 50;
 
@@ -63,9 +69,7 @@ volatile byte rollCounter=0;
 void setup() 
 {
   //byte p=*MCUSR;
-  //Serial.begin(115200);
-  //Serial.println(p);
-  //Serial.println("Q");
+  Serial.begin(115200);
   fan_control.attach(fan_esc_pwm);
   fan_control.write(50);
   
@@ -137,8 +141,8 @@ void setup()
   *PCMSK0=0x04; //Enable PCINT2 pin
   *PCICR=0x05; //Enable PCINT2 and PCINT0 banks
 
-  servo_horn.attach(servo_horn_pin);
-  servo_horn.write(servo_init);
+  //servo_horn.attach(servo_horn_pin);
+  //servo_horn.write(servo_init);
   
   #if defined LONG_RANGE
     // lower the return signal rate limit (default is 0.25 MCPS)
@@ -172,23 +176,29 @@ void setup()
   tof_width.startContinuous();
   tof_length.startContinuous();
   delay(5000);
+  fan_control.write(175);
+  TOFCounter=0;
 }
 
 
 char a;
 int flag = 0;
+volatile uint16_t y_t=0;
+
 float x_base = 0.0, y_base = 0.0, theta = 0.0, d_prev_l = 0.0, d_prev_r = 0.0;
 float d_l, d_r, del_l, del_r, heading, rad_wheel = 2/2.54, width = 15/2.54;
 float x_g, y_g, x_new = 400,y_new = 250, yaw_goal = 0, yaw_error_prev = 0.0;
 /***************************************************************************/
 ISR (TIMER2_COMPA_vect)
 {
+  sei();
   if (I2C_Lock==0)
   {
-    sei();
+    //Serial.println(yaw);
+    //sei();
     //should just be hardset to 0.016 s (with a small difference in millis)
     float del_t = timeStep;
-    float e_t = timeStep*rollCounter + 0.016;
+    float e_t = timeStep*rollCounter + timeStep;
     d_l = EdgeCountLeft/2520.0 * 2 * PI * rad_wheel;
     d_r = EdgeCountRight/2520.0 * 2 * PI * rad_wheel;
     // Read normalized values
@@ -240,10 +250,20 @@ ISR (TIMER2_COMPA_vect)
   
     timerRoll=1;
     rollCounter=0;
+    if (fabs(yaw)>=360.0f)
+      yaw = yaw - 360.0f;
   }
   else
   {
     rollCounter++;
+  }
+  TOFCounter++;
+  //must have 4 timer ticks in order to avoid I2C conflict
+  if (TOFCounter==15 && TOFCounter>=4)
+  {
+    //Serial.println("Yeet");
+    y_t = tof_length.readRangeContinuousMillimeters();
+    TOFCounter=0;
   }
 }
 void waitForNextTimer()
@@ -253,11 +273,53 @@ void waitForNextTimer()
 
 }
 /**********************************************************/
-void executeCLC()
-{
+void face(int dir){
+  float kp = 15;
   
+  float yaw_error = dir - yaw;
+
+  float control = kp * yaw_error;// + kd * (yaw_error - yaw_error_prev) + 10;
+  
+  
+  set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed + control);
+  set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, move_speed - control);
+
+  //yaw_error_prev = yaw_error;
+  
+//  if (dir == UP){ //Facing up
+//    int control = 0;
+//    if (fabs(yaw)>=)
+//      control=kp*(360.0f -yaw);
+//    else
+//      control=kp*(0.0f-yaw);
+//    Serial.println(control);
+//    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, -control);
+//    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, control);
+//  }
+//  else if (dir ==DOWN) {
+//    int control = kp*(180.0f-yaw);
+//    Serial.println(control);
+//    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, -control);
+//    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, control);
+//  }
+//  else if (dir ==LEFT) {
+//    int control = kp*(270.0f-yaw);
+//    Serial.println(control);
+//    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, -control);
+//    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, control);
+//  }
+//  else if (dir ==RIGHT) {
+//    int control = kp*(90.0f-yaw);
+//    Serial.println(control);
+//    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, -control);
+//    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, control);
+//  }
 }
 byte startflag=0;
+volatile int16_t prev_filteredX=0;
+volatile int16_t prev_filteredY=0;
+volatile int16_t prev_filteredZ=0;
+
 void loop()
 { 
   //forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 200);
@@ -274,150 +336,157 @@ void loop()
   //37ms since the previous read, the timer will "instantly" read the next call.
 
   // time_I2C_LOCK ==1 -> min(timing_budget-(time_current_read - time_prev_read)), 0) + time_of_I2C_Read
-  waitForNextTimer();
+ /* waitForNextTimer();
   I2C_Lock=1;
   float x_g_raw = tof_width.readRangeContinuousMillimeters();
   I2C_Lock=0;
   waitForNextTimer();
   I2C_Lock=1;
-  float y_g_raw = tof_length.readRangeContinuousMillimeters();
-  I2C_Lock=0;
+  I2C_Lock=0;*/
   /*****************************************************************************/
-  if(x_g_raw <= 3000)
+  /*if(x_g_raw <= 3000)
     x_g = tof_width_filter.process(x_g_raw) - 8;
 
   if(y_g_raw <= 3000)
-    y_g = tof_length_filter.process(y_g_raw);
- 
-  if(Serial.available())
+    y_g = tof_length_filter.process(y_g_raw);*/
+//  if(Serial.available())
+//  {
+//    barrier_flag = 0;
+//    edge_flag = 0;
+//    a = Serial.read();
+//    if(a == '2')
+//    {
+//      move_speed = -fixed_speed;
+//      timer = 0;
+//      /*  
+//      for(int i = 0; i< num_iter; i++)
+//        backward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
+//      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+//      */
+//    }  
+//    if(a == '1')
+//    {
+//      move_speed = fixed_speed;
+//      timer = 0;
+//      /*
+//      for(int i = 0; i< num_iter; i++)
+//        forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
+//      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+//      */
+//    }      
+//    if(a == '3')
+//    {
+//      move_speed = 0;
+//      timer = 0;
+//      yaw_goal = yaw_goal + 5;
+//      /*
+//      for(int i = 0; i< num_iter; i++)
+//        left(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
+//      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+//      */
+//    } 
+//    if(a == '4')
+//    {
+//      move_speed = 0;
+//      timer = 0;
+//      yaw_goal = yaw_goal - 5;
+//      /*
+//      for(int i = 0; i< num_iter; i++)
+//        right(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
+//      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+//      */
+//    }  
+//    if(a == '5')
+//    {
+//      fanspeed=50;
+//      move_speed = 0;
+//      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+//    }
+//    
+//    if(a=='6')
+//      fanspeed=170;
+//    
+//    if(a == '7')
+//      fanspeed -= 10;
+//
+//    if(a == '8')
+//      fanspeed += 10;
+//
+//    if(a == '9')
+//      startflag = 1;
+//     
+//    fan_control.write(fanspeed);
+//  }
+  delay(2000);
+  while (y_t>200)
   {
-    barrier_flag = 0;
-    edge_flag = 0;
-    a = Serial.read();
-    if(a == '2')
-    {
-      move_speed = -fixed_speed;
-      timer = 0;
-      /*  
-      for(int i = 0; i< num_iter; i++)
-        backward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
-      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-      */
-    }  
-    if(a == '1')
-    {
-      move_speed = fixed_speed;
-      timer = 0;
-      /*
-      for(int i = 0; i< num_iter; i++)
-        forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
-      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-      */
-    }      
-    if(a == '3')
-    {
-      move_speed = 0;
-      timer = 0;
-      yaw_goal = yaw_goal + 5;
-      /*
-      for(int i = 0; i< num_iter; i++)
-        left(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
-      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-      */
-    } 
-    if(a == '4')
-    {
-      move_speed = 0;
-      timer = 0;
-      yaw_goal = yaw_goal - 5;
-      /*
-      for(int i = 0; i< num_iter; i++)
-        right(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
-      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-      */
-    }  
-    if(a == '5')
-    {
-      fanspeed=50;
-      move_speed = 0;
-      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-    }
-    
-    if(a=='6')
-      fanspeed=170;
-    
-    if(a == '7')
-      fanspeed -= 10;
-
-    if(a == '8')
-      fanspeed += 10;
-
-    if(a == '9')
-      startflag = 1;
-     
-    fan_control.write(fanspeed);
+    move_speed=150;
+    face(UP);
+    //Serial.println(y_t);
+    delay(20);
   }
-
-
-
-/*
-  timer = millis();
-
-  float del_t = (timer - timer_d)/1000.0f;
-
-  d_l = EdgeCountLeft/2520.0 * 2 * PI * rad_wheel;
-  d_r = EdgeCountRight/2520.0 * 2 * PI * rad_wheel;
-
-  // Read normalized values
-  Vector norm = mpu.readNormalizeGyro();
-  Vector accel = mpu.readNormalizeAccel();
-
-  // Calculate Pitch, Roll and Yaw
-  //pitch = pitch + norm.YAxis * timeStep;
-  //roll = roll + norm.XAxis * timeStep;
-  yaw = yaw + norm.ZAxis * timeStep;
-  
-  float yaw2 = -yaw * 3.1416/180.0f;
-  
-  del_l = d_l - d_prev_l;
-  del_r = d_r - d_prev_r;
-  //Serial.print(del_l,6);
-  //Serial.print(" ");
-  //Serial.print(fabs(del_l - del_r),6);
-
-  if(del_t!=0)
-  { 
-    if(fabs(del_l - del_r)  <= 0.0145){
-  
-      float del_avg = (del_l + del_r)/2.0f;
-  
-      x_base += del_avg * cos(yaw2);
-      y_base += del_avg * sin(yaw2);
-      //Serial.print("ST ");
-    }
-  
-    else{
-  
-      del_l = del_l/del_t;
-      del_r = del_r/del_t;
-  
-      float R = width * (del_l + del_r) / (2 * (del_r - del_l)), wd = (del_r - del_l) / width; 
-      float icc_x = x_base - R*sin(yaw2), icc_y = y_base + R*cos(yaw2);
-      float del_x = x_base - icc_x, del_y = y_base - icc_y; 
-  
-      x_base = del_x * cos(wd * del_t) - del_y * sin(wd * del_t) + icc_x;
-      y_base = del_x * sin(wd * del_t) + del_y * cos(wd * del_t) + icc_y;
-      heading = (yaw2 + wd * del_t)*180.0/PI;
-      //Serial.print("TU ");
-    }
+  for (int i=0; i<50; i++)
+  {
+    move_speed=0;
+    face(RIGHT);
+    delay(20);
   }
-*/
-
-  //fan_control.write(180);
-  //delay(5000);  
-
-  //Yaw Control
-
+  while (y_t>200)
+  {
+    move_speed=150;
+    face(RIGHT);
+    //Serial.println(y_t);
+    delay(20);
+  }
+  for (int i=0; i<50; i++)
+  {
+    move_speed=0;
+    face(DOWN);
+    delay(20);
+  }
+  while (y_t>200)
+  {
+    move_speed=150;
+    face(DOWN);
+    //Serial.println(y_t);
+    delay(20);
+  }
+  for (int i=0; i<50; i++)
+  {
+    move_speed=0;
+    face(LEFT);
+    delay(20);
+  }
+  while (y_t>200)
+  {
+    move_speed=150;
+    face(LEFT);
+    //Serial.println(y_t);
+    delay(20);
+  }
+  move_speed=0;
+  brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+  delay(3000);
+  while (1){
+    fan_control.write(70);
+    delay(200);
+  }
+  /*
+  Serial.println("DOWN");
+  delay(500);
+    for (int i=0; i<500; i++)
+  {
+    face(DOWN); 
+    delay(20);
+  }
+  Serial.println("LEFT");
+  delay(500);
+    for (int i=0; i<500; i++)
+  {
+    face(LEFT);
+    delay(20);
+  }*/
+  /*
   if(flag == 0 && startflag==1)
     {
       //forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
@@ -451,8 +520,7 @@ void loop()
         move_speed = 0;
       }
     }
-
-  /*  
+  
   if(flag == 3){
     move_speed = 0;
     
@@ -467,7 +535,7 @@ void loop()
       }
   }
 */
-  
+  /* 
   float yaw_error = yaw_goal - yaw, kp = 10, kd = 2;
 
   float control = kp * yaw_error + kd * (yaw_error - yaw_error_prev) + 10;
@@ -480,7 +548,7 @@ void loop()
 
   if(timer > 20)
     move_speed = 0;
-
+  */
   
   
 
@@ -551,7 +619,7 @@ void loop()
       //forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 180);
   }
   */
-  
+  /*
   if(x_g <= 5000){
   // Output raw
   Serial.print("X_a = ");
@@ -562,7 +630,7 @@ void loop()
   //Serial.print(" ");
   Serial.print(" Z_a = ");
   Serial.println(yaw);
-  }
+  }*/
   
   /*
   Serial.print("X_b = ");

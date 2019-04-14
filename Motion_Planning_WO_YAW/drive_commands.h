@@ -115,10 +115,10 @@ void set_speed_left(int bin1, int bin2, int pwmb, int motor_speed){
   }
 
   if(motor_speed>170)
-    motor_speed = 170;
+    motor_speed = 100;
 
   if(motor_speed<-170)
-    motor_speed = -170;
+    motor_speed = -100;
 
   analogWrite(pwmb,abs(motor_speed));
 }
@@ -137,10 +137,10 @@ void set_speed_right(int ain1, int ain2, int pwma, int motor_speed){
   }
 
   if(motor_speed>170)
-    motor_speed = 170;
+    motor_speed = 100;
 
   if(motor_speed<-170)
-    motor_speed = -170;
+    motor_speed = -100;
 
   analogWrite(pwma,abs(motor_speed));
 }

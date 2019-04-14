@@ -22,7 +22,7 @@
 #define TCNT2  ((volatile byte *)0xB2)
 #define OCR2A ((volatile byte *)0xB3)
 #define OCR2B ((volatile byte *)0xB4)
-
+#define MCUSR ((volatile byte *)0x55)
 /*#define MCUSR ((volatile byte *)0x55)
 #define WDTCSR ((volatile byte *)0xB4)
 //#define MCUSR ((volatile byte *)0xB4)
