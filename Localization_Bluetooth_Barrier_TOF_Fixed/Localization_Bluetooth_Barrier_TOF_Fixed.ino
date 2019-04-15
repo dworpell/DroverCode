@@ -73,7 +73,7 @@ void setup()
   Serial.println("Q");
   fan_control.attach(fan_esc_pwm);
   fan_control.write(50);
-  delay(1500);
+  delay(15000);
   
   // Initialize MPU6050
   while(!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G))
@@ -465,7 +465,7 @@ void loop()
   }*/
   move_speed=0;
   brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-  delay(3000);
+  delay(5000);
   while (1){
     fan_control.write(50);
     delay(200);
