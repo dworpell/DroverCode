@@ -23,9 +23,11 @@ VL53L0X tof_length;
 Servo servo_horn;
 Servo fan_control;
 
-MovingAverageFilter tof_width_filter(1);
-MovingAverageFilter tof_length_filter(1);
-MovingAverageFilter yaw_filter(1);
+MovingAverageFilter tof_width_filter(10);
+MovingAverageFilter tof_length_filter(10);
+MovingAverageFilter yaw_filter(10);
+
+MovingAverageFilter gyroX_filter(5);
 
 int servo_horn_pin = 13;
 
@@ -179,6 +181,7 @@ void setup()
   tof_length.startContinuous();
   delay(500);
   fan_control.write(175);
+  delay(2000);
   TOFCounter=0;
 }
 
@@ -208,11 +211,17 @@ ISR (TIMER2_COMPA_vect)
     accel.YAxis += 484;
     accel.ZAxis += 4264;
     
+    accel.XAxis = tof_width_filter.process(accel.XAxis);
+    accel.YAxis = tof_length_filter.process(accel.YAxis);
+    accel.ZAxis = yaw_filter.process(accel.ZAxis);
+
+    norm.XAxis = gyroX_filter.process(norm.XAxis);
+
          
     // Calculate Pitch, Roll and Yaw
-     float accelX= atan((accel.YAxis/16384.0)/sqrt(pow((accel.XAxis/16384.0),2) + pow((accel.ZAxis/16384.0),2)))*rad_to_deg;
+     float accelX= atan2((accel.YAxis/16384.0),sqrt(pow((accel.XAxis/16384.0),2) + pow((accel.ZAxis/16384.0),2)))*rad_to_deg;
      /*---Y---*/
-     float accelY= atan(-1*(accel.XAxis/16384.0)/sqrt(pow((accel.YAxis/16384.0),2) + pow((accel.ZAxis/16384.0),2)))*rad_to_deg;
+     float accelY= atan2(-1*(accel.XAxis/16384.0),sqrt(pow((accel.YAxis/16384.0),2) + pow((accel.ZAxis/16384.0),2)))*rad_to_deg;
      /*---Y---*/
     //Serial.println(accel.YAxis);
     float alpha=0.1;
@@ -222,11 +231,13 @@ ISR (TIMER2_COMPA_vect)
     roll =  (1-alpha)*(roll + norm.XAxis * timeStep)+(alpha*accelX);
     Serial.print(norm.XAxis);
     Serial.print(" ");
-    Serial.print(tof_width_filter.process(accel.XAxis));
+    Serial.print(accel.XAxis);
     Serial.print(" ");
-    Serial.print(tof_length_filter.process(accel.YAxis));
+    Serial.print(accel.YAxis);
     Serial.print(" ");
-    Serial.println(yaw_filter.process(accel.ZAxis));
+    Serial.print(accel.ZAxis);
+    Serial.print(" ");
+    Serial.println(roll);
     //yaw = (yaw + norm.ZAxis * timeStep;// + ;
     //Serial.println(yaw);
     /*Serial.print(pitch);
