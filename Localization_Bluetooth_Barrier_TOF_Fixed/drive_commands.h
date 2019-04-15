@@ -144,3 +144,84 @@ void set_speed_right(int ain1, int ain2, int pwma, int motor_speed){
 
   analogWrite(pwma,abs(motor_speed));
 }
+
+
+
+int face_up(float a_y, float a_z, float roll)
+{
+  float kp = 0.5, control;
+  int turn_speed = 170;
+  if(a_z < 0){
+    if(roll>0)
+      control = -turn_speed;
+      //right to 0
+    else
+      //left to 0
+      control = turn_speed;
+  }
+  else
+    //err = roll
+    control = - kp * roll;
+  return control; 
+}
+
+
+int face_left(float a_y, float a_z, float roll)
+{
+  float kp = 0.5, control;
+  int turn_speed = 170;
+  if(a_y < 0){
+    if(a_z<0)
+      //right to 90
+      control = -(kp * (90 - roll));
+    else
+      //left to 90
+      control = (kp * (90 - roll));
+  }
+  else
+    //err = 90 - sign(z)*roll
+    control = ((a_z>0)?1:-1)*(kp * (90 - roll));
+
+  return control;
+    
+}
+
+
+int face_right(float a_y, float a_z, float roll)
+{
+  float kp = 0.5, control;
+  int turn_speed = 170;
+  if(a_y > 0){
+    if(a_z>0)
+      //right to 90
+      control = (kp * (-90 - roll));
+    else
+      //left to 90
+      control = -(kp * (-90 - roll));
+  }
+  else
+    //err = -90 - sign(z)*roll
+    control = ((a_z>0)?1:-1)*(kp * (-90 - roll));
+
+  return control;
+}
+
+
+int face_down(float a_y, float a_z, float roll)
+{
+  float kp = 0.5, control;
+  int turn_speed = 170;
+  if(a_z > 0){
+    if(roll<0)
+      //right to 0
+      control = -turn_speed;
+    else
+      //left to 0
+      control = turn_speed;
+  }
+  else
+    //err = -roll
+    control = -kp*roll;
+
+  return control;
+}
