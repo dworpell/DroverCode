@@ -27,6 +27,7 @@ Servo fan_control;
 
 MovingAverageFilter tof_width_filter(5);
 MovingAverageFilter tof_length_filter(5);
+MovingAverageFilter yaw_filter(5);
 
 int servo_horn_pin = 13;
 
@@ -49,11 +50,12 @@ int fanspeed = 50;
 
 // Timers
 unsigned long timer = 0, timer_d = 0;
-float timeStep = 0.016;//0.00576;
+float timeStep = 0.0064;//0.00576;
 // Pitch, Roll and Yaw values
 float pitch = 0;
 float roll = 0;
 volatile float yaw = 0;
+float d2r = PI/180.0;
 
 int num_iter = 10000;
 
@@ -70,6 +72,7 @@ void setup()
 {
   //byte p=*MCUSR;
   Serial.begin(115200);
+  Serial.println("Q");
   fan_control.attach(fan_esc_pwm);
   fan_control.write(50);
   
@@ -99,11 +102,11 @@ void setup()
   delay(100);
   // Calibrate gyroscope. The calibration must be at rest.
   // If you don't want calibrate, comment this line.
-  mpu.calibrateGyro();
-  delay(100);
+  mpu.calibrateGyro(100);
+  delay(1000);
   // Set threshold sensivty. Default 3.
   // If you don't want use threshold, comment this line or set 0.
-  mpu.setThreshold(1);
+  mpu.setThreshold(0);
 
 
   pinMode(motor_left_pwm,OUTPUT);
@@ -169,14 +172,14 @@ void setup()
   *TIFR2=0xff; //Clear interrupt flags for safety
   *TCCR2A=0x02; //Set to Clear on Timer Compare
   *TCCR2B=0x00;
-  *OCR2A=249;   
+  *OCR2A=99;   
   *TIMSK2 = 0x02; // Enables Interrupts on OCRA = TCNT2
   *TCCR2B = 0x07; // Starts the timer
   
   tof_width.startContinuous();
   tof_length.startContinuous();
   delay(5000);
-  fan_control.write(175);
+  fan_control.write(108);
   TOFCounter=0;
 }
 
@@ -188,6 +191,7 @@ volatile uint16_t y_t=0;
 float x_base = 0.0, y_base = 0.0, theta = 0.0, d_prev_l = 0.0, d_prev_r = 0.0;
 float d_l, d_r, del_l, del_r, heading, rad_wheel = 2/2.54, width = 15/2.54;
 float x_g, y_g, x_new = 400,y_new = 250, yaw_goal = 0, yaw_error_prev = 0.0;
+float alpha = 0.1, yaw3 = 0.0;
 /***************************************************************************/
 ISR (TIMER2_COMPA_vect)
 {
@@ -203,14 +207,15 @@ ISR (TIMER2_COMPA_vect)
     d_r = EdgeCountRight/2520.0 * 2 * PI * rad_wheel;
     // Read normalized values
     Vector norm = mpu.readNormalizeGyro();
-    Vector accel = mpu.readNormalizeAccel();
-  
+    //Vector accel = mpu.readNormalizeAccel();
+         
     // Calculate Pitch, Roll and Yaw
-    pitch = pitch + norm.YAxis * timeStep;
-    roll = roll + norm.XAxis * timeStep;
+    //pitch = pitch + norm.YAxis * timeStep;
+    //roll = roll + norm.XAxis * timeStep;
     yaw = yaw + norm.ZAxis * timeStep;
+    Serial.println(yaw);
     
-    float yaw2 = -1 * 3.1416/180.0f;
+    float yaw2 = -yaw * 3.1416/180.0f;
     
     del_l = d_l - d_prev_l;
     del_r = d_r - d_prev_r;
@@ -258,8 +263,8 @@ ISR (TIMER2_COMPA_vect)
     rollCounter++;
   }
   TOFCounter++;
-  //must have 4 timer ticks in order to avoid I2C conflict
-  if (TOFCounter==15 && TOFCounter>=4)
+  //must have 8 timer ticks in order to avoid I2C conflict
+  if (TOFCounter==39 && TOFCounter>=8)
   {
     //Serial.println("Yeet");
     y_t = tof_length.readRangeContinuousMillimeters();
