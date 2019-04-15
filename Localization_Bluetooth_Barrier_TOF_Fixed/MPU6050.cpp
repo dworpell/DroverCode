@@ -342,6 +342,41 @@ Activites MPU6050::readActivites(void)
     return a;
 }
 
+Vector MPU6050::readOnlyZG(void)
+{
+  Wire.beginTransmission(mpuAddress);
+    #if ARDUINO >= 100
+  Wire.write(MPU6050_REG_ACCEL_XOUT_H);
+    #else
+  Wire.send(MPU6050_REG_ACCEL_XOUT_H);
+    #endif
+    Wire.endTransmission();
+
+    Wire.beginTransmission(mpuAddress);
+    Wire.requestFrom(mpuAddress, 2);
+    while (Wire.available() < 2);
+    #if ARDUINO >= 100
+ // uint8_t xha = Wire.read();
+ // uint8_t xla = Wire.read();
+ //       uint8_t yha = Wire.read();
+ // uint8_t yla = Wire.read();
+  uint8_t zha = Wire.read();
+  uint8_t zla = Wire.read();
+    #else
+  //uint8_t xha = Wire.receive();
+  //uint8_t xla = Wire.receive();
+  //uint8_t yha = Wire.receive();
+  //uint8_t yla = Wire.receive();
+  uint8_t zha = Wire.receive();
+  uint8_t zla = Wire.receive();
+    #endif
+
+    ra.XAxis =0;// xha << 8 | xla;
+    ra.YAxis =0;// yha << 8 | yla;
+    ra.ZAxis = zha << 8 | zla;
+
+    return ra;
+}
 Vector MPU6050::readRawAccel(void)
 {
     Wire.beginTransmission(mpuAddress);
@@ -421,7 +456,7 @@ Vector MPU6050::readRawGyro(void)
     #if ARDUINO >= 100
 	uint8_t xha = Wire.read();
 	uint8_t xla = Wire.read();
-        uint8_t yha = Wire.read();
+  uint8_t yha = Wire.read();
 	uint8_t yla = Wire.read();
 	uint8_t zha = Wire.read();
 	uint8_t zla = Wire.read();
@@ -439,6 +474,31 @@ Vector MPU6050::readRawGyro(void)
     rg.ZAxis = zha << 8 | zla;
 
     return rg;
+}
+Vector MPU6050::readNormZG(void)
+{
+    readOnlyZG();
+
+    if (useCalibrate)
+    {
+  ng.XAxis = (rg.XAxis - dg.XAxis) * dpsPerDigit;
+  ng.YAxis = (rg.YAxis - dg.YAxis) * dpsPerDigit;
+  ng.ZAxis = (rg.ZAxis - dg.ZAxis) * dpsPerDigit;
+    } else
+    {
+  ng.XAxis = rg.XAxis * dpsPerDigit;
+  ng.YAxis = rg.YAxis * dpsPerDigit;
+  ng.ZAxis = rg.ZAxis * dpsPerDigit;
+    }
+
+    if (actualThreshold)
+    {
+  if (abs(ng.XAxis) < tg.XAxis) ng.XAxis = 0;
+  if (abs(ng.YAxis) < tg.YAxis) ng.YAxis = 0;
+  if (abs(ng.ZAxis) < tg.ZAxis) ng.ZAxis = 0;
+    }
+
+    return ng;
 }
 
 Vector MPU6050::readNormalizeGyro(void)

@@ -13,10 +13,8 @@
 #define LONG_RANGE
 //#define HIGH_ACCURACY
 
-#define UP 0
-#define DOWN 180
-#define RIGHT 90
-#define LEFT 270
+#define RIGHT -90
+#define LEFT 90
 
 MPU6050 mpu;
 VL53L0X tof_width;
@@ -25,9 +23,9 @@ VL53L0X tof_length;
 Servo servo_horn;
 Servo fan_control;
 
-MovingAverageFilter tof_width_filter(5);
-MovingAverageFilter tof_length_filter(5);
-MovingAverageFilter yaw_filter(5);
+MovingAverageFilter tof_width_filter(1);
+MovingAverageFilter tof_length_filter(1);
+MovingAverageFilter yaw_filter(1);
 
 int servo_horn_pin = 13;
 
@@ -50,7 +48,7 @@ int fanspeed = 50;
 
 // Timers
 unsigned long timer = 0, timer_d = 0;
-float timeStep = 0.0064;//0.00576;
+float timeStep = 0.016;//0.00576;
 // Pitch, Roll and Yaw values
 float pitch = 0;
 float roll = 0;
@@ -67,7 +65,7 @@ int fixed_speed = 170;
 volatile byte timerRoll=0;
 volatile byte I2C_Lock=0;
 volatile byte rollCounter=0;
-
+float rad_to_deg = 180/3.141592654;
 void setup() 
 {
   //byte p=*MCUSR;
@@ -75,6 +73,7 @@ void setup()
   Serial.println("Q");
   fan_control.attach(fan_esc_pwm);
   fan_control.write(50);
+  delay(1500);
   
   // Initialize MPU6050
   while(!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G))
@@ -132,17 +131,17 @@ void setup()
   Encoder1B=digitalRead(4);
   
   /***Configure INT0 and INT1 Pins***/
-  *EIFR=0x03;  //Clear the INT0 and INT1 digitFlags
-  *EICRA=0x05; //Set INT0 and INT1 to trigger on any edge
-  *EIMSK=0x03; //Enable INT0 and INT1 interrupt vectors
+  //*EIFR=0x03;  //Clear the INT0 and INT1 digitFlags
+  //*EICRA=0x05; //Set INT0 and INT1 to trigger on any edge
+  //*EIMSK=0x03; //Enable INT0 and INT1 interrupt vectors
   
   
   /***Configure PCINT pins***/
-  *PCIFR=0x07;  //Clear all PCINT flags
-  *PCMSK2=0x10; //Enable PCINT20 Pin
+  //*PCIFR=0x07;  //Clear all PCINT flags
+  *PCMSK2=0x00; //Enable PCINT20 Pin
   *PCMSK1=0x00; //Ensure all PCINT1 pins are disabled
-  *PCMSK0=0x04; //Enable PCINT2 pin
-  *PCICR=0x05; //Enable PCINT2 and PCINT0 banks
+  *PCMSK0=0x00; //Enable PCINT2 pin
+  //*PCICR=0x05; //Enable PCINT2 and PCINT0 banks
 
   //servo_horn.attach(servo_horn_pin);
   //servo_horn.write(servo_init);
@@ -172,14 +171,14 @@ void setup()
   *TIFR2=0xff; //Clear interrupt flags for safety
   *TCCR2A=0x02; //Set to Clear on Timer Compare
   *TCCR2B=0x00;
-  *OCR2A=99;   
+  *OCR2A=249;   
   *TIMSK2 = 0x02; // Enables Interrupts on OCRA = TCNT2
   *TCCR2B = 0x07; // Starts the timer
   
   tof_width.startContinuous();
   tof_length.startContinuous();
-  delay(5000);
-  fan_control.write(108);
+  delay(500);
+  fan_control.write(175);
   TOFCounter=0;
 }
 
@@ -203,60 +202,38 @@ ISR (TIMER2_COMPA_vect)
     //should just be hardset to 0.016 s (with a small difference in millis)
     float del_t = timeStep;
     float e_t = timeStep*rollCounter + timeStep;
-    d_l = EdgeCountLeft/2520.0 * 2 * PI * rad_wheel;
-    d_r = EdgeCountRight/2520.0 * 2 * PI * rad_wheel;
-    // Read normalized values
     Vector norm = mpu.readNormalizeGyro();
-    //Vector accel = mpu.readNormalizeAccel();
+    Vector accel = mpu.readRawAccel();
+    accel.XAxis -= 1920;
+    accel.YAxis += 484;
+    accel.ZAxis += 4264;
+    
          
     // Calculate Pitch, Roll and Yaw
-    //pitch = pitch + norm.YAxis * timeStep;
-    //roll = roll + norm.XAxis * timeStep;
-    yaw = yaw + norm.ZAxis * timeStep;
-    Serial.println(yaw);
-    
-    float yaw2 = -yaw * 3.1416/180.0f;
-    
-    del_l = d_l - d_prev_l;
-    del_r = d_r - d_prev_r;
-    //Serial.print(del_l,6);
-    //Serial.print(" ");
-    //Serial.print(fabs(del_l - del_r),6);
-  
-    if(e_t!=0)
-    { 
-      if(fabs(del_l - del_r)  <= 0.0145){
-    
-        float del_avg = (del_l + del_r)/2.0f;
-    
-        x_base += del_avg * cos(yaw2);
-        y_base += del_avg * sin(yaw2);
-        //Serial.print("ST ");
-      }
-    
-      else{
-    
-        del_l = del_l/e_t;
-        del_r = del_r/e_t;
-    
-        float R = width * (del_l + del_r) / (2 * (del_r - del_l)), wd = (del_r - del_l) / width; 
-        float icc_x = x_base - R*sin(yaw2), icc_y = y_base + R*cos(yaw2);
-        float del_x = x_base - icc_x, del_y = y_base - icc_y; 
-    
-        x_base = del_x * cos(wd * e_t) - del_y * sin(wd * e_t) + icc_x;
-        y_base = del_x * sin(wd * e_t) + del_y * cos(wd * e_t) + icc_y;
-        heading = (yaw2 + wd * e_t)*180.0/PI;
-        //Serial.print("TU ");
-      }
-    }
-  
-    d_prev_l = d_l;
-    d_prev_r = d_r;
-  
+     float accelX= atan((accel.YAxis/16384.0)/sqrt(pow((accel.XAxis/16384.0),2) + pow((accel.ZAxis/16384.0),2)))*rad_to_deg;
+     /*---Y---*/
+     float accelY= atan(-1*(accel.XAxis/16384.0)/sqrt(pow((accel.YAxis/16384.0),2) + pow((accel.ZAxis/16384.0),2)))*rad_to_deg;
+     /*---Y---*/
+    //Serial.println(accel.YAxis);
+    float alpha=0.1;
+    if (!isnan(accelX))
+    pitch = (1-alpha)*(pitch + norm.YAxis * timeStep)+(alpha*accelY);
+    if (!isnan(accelY))
+    roll =  (1-alpha)*(roll + norm.XAxis * timeStep)+(alpha*accelX);
+    Serial.print(norm.XAxis);
+    Serial.print(" ");
+    Serial.print(tof_width_filter.process(accel.XAxis));
+    Serial.print(" ");
+    Serial.print(tof_length_filter.process(accel.YAxis));
+    Serial.print(" ");
+    Serial.println(yaw_filter.process(accel.ZAxis));
+    //yaw = (yaw + norm.ZAxis * timeStep;// + ;
+    //Serial.println(yaw);
+    /*Serial.print(pitch);
+    Serial.print(" ");
+    Serial.println(roll);*/
     timerRoll=1;
     rollCounter=0;
-    if (fabs(yaw)>=360.0f)
-      yaw = yaw - 360.0f;
   }
   else
   {
@@ -264,12 +241,16 @@ ISR (TIMER2_COMPA_vect)
   }
   TOFCounter++;
   //must have 8 timer ticks in order to avoid I2C conflict
-  if (TOFCounter==39 && TOFCounter>=8)
+  if (TOFCounter==16 && TOFCounter>=8)
   {
     //Serial.println("Yeet");
-    y_t = tof_length.readRangeContinuousMillimeters();
+    //y_t = tof_length.readRangeContinuousMillimeters();
     TOFCounter=0;
   }
+}
+void turn(int dir)
+{
+  yaw_goal = yaw_goal+dir;
 }
 void waitForNextTimer()
 {
@@ -278,16 +259,25 @@ void waitForNextTimer()
 
 }
 /**********************************************************/
-void face(int dir){
-  float kp = 15;
-  
-  float yaw_error = dir - yaw;
+void face(){
+  float yaw_error = yaw_goal - yaw;
+  float kp = 15;                                //, kd = 2;
 
-  float control = kp * yaw_error;// + kd * (yaw_error - yaw_error_prev) + 10;
+  float control = kp * yaw_error;               // + kd * (yaw_error - yaw_error_prev) + 10;
+
+  set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed - control);
+  set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, move_speed + control);
+
+  //yaw_error_prev = yaw_error;
+  //float kp = 15;
+  
+  //float yaw_error = yaw_goal - yaw;
+
+  //float control = kp * yaw_error;// + kd * (yaw_error - yaw_error_prev) + 10;
   
   
-  set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed + control);
-  set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, move_speed - control);
+  //set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed + control);
+  //set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, move_speed - control);
 
   //yaw_error_prev = yaw_error;
   
@@ -422,58 +412,62 @@ void loop()
 //     
 //    fan_control.write(fanspeed);
 //  }
-  delay(2000);
-  while (y_t>200)
+  //delay(10000);
+  /*while (y_t>200)
   {
     move_speed=150;
-    face(UP);
+    face();
     //Serial.println(y_t);
     delay(20);
   }
+  turn(RIGHT);
   for (int i=0; i<50; i++)
   {
     move_speed=0;
-    face(RIGHT);
+    face();
     delay(20);
   }
+  
   while (y_t>200)
   {
     move_speed=150;
-    face(RIGHT);
+    face();
     //Serial.println(y_t);
     delay(20);
   }
+  turn(RIGHT);
   for (int i=0; i<50; i++)
   {
     move_speed=0;
-    face(DOWN);
+    face();
     delay(20);
   }
   while (y_t>200)
   {
     move_speed=150;
-    face(DOWN);
+    face();
     //Serial.println(y_t);
     delay(20);
   }
+  turn(RIGHT);
   for (int i=0; i<50; i++)
   {
     move_speed=0;
-    face(LEFT);
+    face();
     delay(20);
   }
   while (y_t>200)
   {
     move_speed=150;
-    face(LEFT);
+    face();
     //Serial.println(y_t);
     delay(20);
-  }
+  }*/
   move_speed=0;
   brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
   delay(3000);
   while (1){
-    fan_control.write(70);
+    fan_control.write(50);
     delay(200);
   }
   /*

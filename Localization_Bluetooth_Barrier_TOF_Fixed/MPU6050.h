@@ -225,7 +225,8 @@ class MPU6050
 
 	Vector readRawGyro(void);
 	Vector readNormalizeGyro(void);
-
+  Vector readOnlyZG(void);
+  Vector readNormZG(void);
 	Vector readRawAccel(void);
 	Vector readNormalizeAccel(void);
 	Vector readScaledAccel(void);
