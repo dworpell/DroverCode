@@ -16,6 +16,10 @@
 #define RIGHT -90
 #define LEFT 90
 
+#define NORTH 0
+#define EAST  1
+#define SOUTH 2
+#define WEST  3
 MPU6050 mpu;
 VL53L0X tof_width;
 VL53L0X tof_length;
@@ -23,9 +27,9 @@ VL53L0X tof_length;
 Servo servo_horn;
 Servo fan_control;
 
-MovingAverageFilter tof_width_filter(10);
-MovingAverageFilter tof_length_filter(10);
-MovingAverageFilter yaw_filter(10);
+MovingAverageFilter tof_width_filter(1);
+MovingAverageFilter tof_length_filter(1);
+MovingAverageFilter yaw_filter(1);
 
 MovingAverageFilter gyroX_filter(5);
 
@@ -86,6 +90,7 @@ void setup()
   while (mpu.getClockSource()!=MPU6050_CLOCK_PLL_XGYRO){mpu.setClockSource(MPU6050_CLOCK_PLL_XGYRO);}
   while (mpu.getScale()==0){mpu.setScale(3);}
   while (mpu.getRange()!= MPU6050_RANGE_2G) {mpu.setRange(MPU6050_RANGE_2G);}
+  mpu.setDLPFMode(MPU6050_DLPF_6);
 
   delay(500);
   pinMode(A3,OUTPUT);
@@ -194,7 +199,18 @@ float x_base = 0.0, y_base = 0.0, theta = 0.0, d_prev_l = 0.0, d_prev_r = 0.0;
 float d_l, d_r, del_l, del_r, heading, rad_wheel = 2/2.54, width = 15/2.54;
 float x_g, y_g, x_new = 400,y_new = 250, yaw_goal = 0, yaw_error_prev = 0.0;
 float alpha = 0.1, yaw3 = 0.0;
+float dlpf_freq=0.5;
+volatile float filtered_accelZ=0; float dlpf_alpha = 2*PI*dlpf_freq*timeStep/(2*PI*timeStep*dlpf_freq + 1); float dlpf_alpha_m=1-dlpf_alpha;
+volatile float filtered_accelY=0;
+volatile float filtered_accelX=0;
 /***************************************************************************/
+byte current_direction =0;
+/*void getDirection()
+{
+  if (filtered_accelZ > 2000)
+    return NORTH;
+  else if (filtered_accelZ<2000)
+}*/
 ISR (TIMER2_COMPA_vect)
 {
   sei();
@@ -205,23 +221,28 @@ ISR (TIMER2_COMPA_vect)
     //should just be hardset to 0.016 s (with a small difference in millis)
     float del_t = timeStep;
     float e_t = timeStep*rollCounter + timeStep;
+    //Gyro value gets filtered by MPU as well as accel values. This is the way the MPU works, so we would need to turn off DLPF for both
     Vector norm = mpu.readNormalizeGyro();
+    //Roughly 16 cycles to read from MPU for a single vector.
     Vector accel = mpu.readRawAccel();
     accel.XAxis -= 1920;
     accel.YAxis += 484;
     accel.ZAxis += 4264;
-    
-    accel.XAxis = tof_width_filter.process(accel.XAxis);
-    accel.YAxis = tof_length_filter.process(accel.YAxis);
-    accel.ZAxis = yaw_filter.process(accel.ZAxis);
 
-    norm.XAxis = gyroX_filter.process(norm.XAxis);
+    
+    //accel.XAxis = tof_width_filter.process(accel.XAxis);
+    //accel.YAxis = tof_length_filter.process(accel.YAxis);
+    //accel.ZAxis = yaw_filter.process(accel.ZAxis);
+    filtered_accelZ = accel.ZAxis*dlpf_alpha + filtered_accelZ*dlpf_alpha_m;
+    filtered_accelY = accel.YAxis*dlpf_alpha + filtered_accelY*dlpf_alpha_m;
+    filtered_accelX = accel.XAxis*dlpf_alpha + filtered_accelX*dlpf_alpha_m;
+    //norm.XAxis = gyroX_filter.process(norm.XAxis);
 
          
     // Calculate Pitch, Roll and Yaw
-     float accelX= atan2((accel.YAxis/16384.0),sqrt(pow((accel.XAxis/16384.0),2) + pow((accel.ZAxis/16384.0),2)))*rad_to_deg;
+     float accelX= atan2((filtered_accelY/16384.0),sqrt(pow((filtered_accelX/16384.0),2) + pow((filtered_accelZ/16384.0),2)))*rad_to_deg;
      /*---Y---*/
-     float accelY= atan2(-1*(accel.XAxis/16384.0),sqrt(pow((accel.YAxis/16384.0),2) + pow((accel.ZAxis/16384.0),2)))*rad_to_deg;
+     float accelY= atan2(-1*(filtered_accelX/16384.0),sqrt(pow((filtered_accelY/16384.0),2) + pow((filtered_accelZ/16384.0),2)))*rad_to_deg;
      /*---Y---*/
     //Serial.println(accel.YAxis);
     float alpha=0.1;
@@ -229,20 +250,15 @@ ISR (TIMER2_COMPA_vect)
     pitch = (1-alpha)*(pitch + norm.YAxis * timeStep)+(alpha*accelY);
     if (!isnan(accelY))
     roll =  (1-alpha)*(roll + norm.XAxis * timeStep)+(alpha*accelX);
-    Serial.print(norm.XAxis);
+    //Serial.print(norm.XAxis);
+    //Serial.print(" ");
+    Serial.print(filtered_accelX);
     Serial.print(" ");
-    Serial.print(accel.XAxis);
+    Serial.print(filtered_accelY);
     Serial.print(" ");
-    Serial.print(accel.YAxis);
-    Serial.print(" ");
-    Serial.print(accel.ZAxis);
+    Serial.print(filtered_accelZ);
     Serial.print(" ");
     Serial.println(roll);
-    //yaw = (yaw + norm.ZAxis * timeStep;// + ;
-    //Serial.println(yaw);
-    /*Serial.print(pitch);
-    Serial.print(" ");
-    Serial.println(roll);*/
     timerRoll=1;
     rollCounter=0;
   }
@@ -278,53 +294,11 @@ void face(){
 
   set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed - control);
   set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, move_speed + control);
-
-  //yaw_error_prev = yaw_error;
-  //float kp = 15;
-  
-  //float yaw_error = yaw_goal - yaw;
-
-  //float control = kp * yaw_error;// + kd * (yaw_error - yaw_error_prev) + 10;
-  
-  
-  //set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed + control);
-  //set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, move_speed - control);
-
-  //yaw_error_prev = yaw_error;
-  
-//  if (dir == UP){ //Facing up
-//    int control = 0;
-//    if (fabs(yaw)>=)
-//      control=kp*(360.0f -yaw);
-//    else
-//      control=kp*(0.0f-yaw);
-//    Serial.println(control);
-//    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, -control);
-//    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, control);
-//  }
-//  else if (dir ==DOWN) {
-//    int control = kp*(180.0f-yaw);
-//    Serial.println(control);
-//    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, -control);
-//    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, control);
-//  }
-//  else if (dir ==LEFT) {
-//    int control = kp*(270.0f-yaw);
-//    Serial.println(control);
-//    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, -control);
-//    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, control);
-//  }
-//  else if (dir ==RIGHT) {
-//    int control = kp*(90.0f-yaw);
-//    Serial.println(control);
-//    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, -control);
-//    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, control);
-//  }
 }
 byte startflag=0;
-volatile int16_t prev_filteredX=0;
-volatile int16_t prev_filteredY=0;
-volatile int16_t prev_filteredZ=0;
+//volatile int16_t prev_filteredX=0;
+//volatile int16_t prev_filteredY=0;
+//volatile int16_t prev_filteredZ=0;
 
 void loop()
 { 
@@ -424,6 +398,7 @@ void loop()
 //    fan_control.write(fanspeed);
 //  }
   //delay(10000);
+  
   /*while (y_t>200)
   {
     move_speed=150;
@@ -474,9 +449,8 @@ void loop()
     //Serial.println(y_t);
     delay(20);
   }*/
-  move_speed=0;
   brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-  delay(5000);
+  delay(7000);
   while (1){
     fan_control.write(50);
     delay(200);
@@ -668,7 +642,7 @@ void loop()
   Serial.println(accel.ZAxis);
   */
   // Wait to full timeStep period
-  waitForNextTimer();
+  //waitForNextTimer();
   //delay(20);
   //delay((timeStep*1000) - (millis() - timer));
 }
