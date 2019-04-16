@@ -211,6 +211,21 @@ byte current_direction =0;
     return NORTH;
   else if (filtered_accelZ<2000)
 }*/
+
+//########################################################################//
+/********STEPS TO CALIBRATE**********************/
+//1.) Upload this code.
+//2.) Put Moolander 2: Electric Boogaloo on the window
+//3.) Align the side of Moolander 2 with right angles relative to the window frame
+//4.) Look at what the range of acceleromerter values is and guess the average value of that
+//5.) Repeat for the other 2 Axis
+//6.) The offset is the difference between (+ or -) 16384 and the value you noted down. 
+//7.) Replace the define statements below with the appropriate values.
+//########################################################################//
+
+#define XAccel_Offset -1920
+#define YAccel_Offset 484
+#define ZAccel_Offset 4264
 ISR (TIMER2_COMPA_vect)
 {
   sei();
@@ -225,9 +240,9 @@ ISR (TIMER2_COMPA_vect)
     Vector norm = mpu.readNormalizeGyro();
     //Roughly 16 cycles to read from MPU for a single vector.
     Vector accel = mpu.readRawAccel();
-    accel.XAxis -= 1920;
-    accel.YAxis += 484;
-    accel.ZAxis += 4264;
+    accel.XAxis +=  XAccel_Offset;
+    accel.YAxis +=  YAccel_Offset;
+    accel.ZAxis +=  ZAccel_Offset;
 
     
     //accel.XAxis = tof_width_filter.process(accel.XAxis);
