@@ -502,56 +502,58 @@ void loop()
     set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
     set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
   }*/
+  for(int i=0; i<4; i++) {
   //ZAxis is positive when robot faces up.
-  while (fabs(roll)>4 || accel.ZAxis >0)
-  {
-    fixed_speed=170;
-    control =face_down(accel.YAxis,accel.ZAxis,roll);
-    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
-    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
-    Serial.println(y_t);
-  }
-  while (y_t > 500)
-  {
-    fixed_speed=170;
-    control =face_down(accel.YAxis,accel.ZAxis,roll);
-    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
-    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
-    Serial.println(y_t);
-  }
-  /*while (fabs(roll+90)>4)
-  {
-    fixed_speed=170;
-    control =face_right(accel.YAxis,accel.ZAxis,roll);
-    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
-    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
-  }
-  while (y_t < 200)
-  {
-    fixed_speed=170;
-    control =face_right(accel.YAxis,accel.ZAxis,roll);
-    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
-    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
-  }*/
-  
-  
-  
-  
-  while (fabs(roll)>3 || accel.ZAxis<0)
-  {
-    fixed_speed=110;
-    control =face_up(accel.YAxis,accel.ZAxis,roll);
-    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
-    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
-    Serial.println(y_t);
-  }
-  while (y_t > 200)
-  {
-    fixed_speed=170;
-    control =face_up(accel.YAxis,accel.ZAxis,roll);
-    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
-    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
-    Serial.println(y_t);  
+    while (fabs(roll)>4 || accel.ZAxis >0)
+    {
+      fixed_speed=170;
+      control =face_down(accel.YAxis,accel.ZAxis,roll);
+      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      Serial.println(y_t);
+    }
+    while (y_t > 500)
+    {
+      fixed_speed=170;
+      control =face_down(accel.YAxis,accel.ZAxis,roll);
+      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      Serial.println(y_t);
+    }
+    /*while (fabs(roll+90)>4)
+    {
+      fixed_speed=170;
+      control =face_right(accel.YAxis,accel.ZAxis,roll);
+      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+    }
+    while (y_t < 200)
+    {
+      fixed_speed=170;
+      control =face_right(accel.YAxis,accel.ZAxis,roll);
+      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+    }*/
+    
+    
+    
+    
+    while (fabs(roll)>3 || accel.ZAxis<0)
+    {
+      fixed_speed=110;
+      control =face_up(accel.YAxis,accel.ZAxis,roll);
+      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      Serial.println(y_t);
+    }
+    while (y_t > 200)
+    {
+      fixed_speed=170;
+      control =face_up(accel.YAxis,accel.ZAxis,roll);
+      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      Serial.println(y_t);  
+    }
   }
   brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
   delay(2000);
