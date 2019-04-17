@@ -362,7 +362,8 @@ void loop()
 //        backward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);      
 //      brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
 //      */
-//    }  
+//    }
+//W  
 //    if(a == '1')
 //    {
 //      move_speed = fixed_speed;
