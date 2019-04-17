@@ -149,15 +149,20 @@ void set_speed_right(int ain1, int ain2, int pwma, int motor_speed){
 
 int face_up(float a_y, float a_z, float roll)
 {
-  float kp = 0.5, control;
+  float kp = 3, control;
+  //Serial.println("u");
   int turn_speed = 170;
   if(a_z < 0){
+    control = turn_speed-65;
+
+    /*
     if(roll>0)
       control = -turn_speed;
       //right to 0
     else
       //left to 0
       control = turn_speed;
+      */
   }
   else
     //err = roll
@@ -168,15 +173,15 @@ int face_up(float a_y, float a_z, float roll)
 
 int face_left(float a_y, float a_z, float roll)
 {
-  float kp = 0.5, control;
+  float kp = 3, control;
   int turn_speed = 170;
   if(a_y < 0){
     if(a_z<0)
       //right to 90
-      control = -(kp * (90 - roll));
+      control =-turn_speed; //-(kp * (90 - roll));
     else
       //left to 90
-      control = (kp * (90 - roll));
+      control = turn_speed;//(kp * (90 - roll));
   }
   else
     //err = 90 - sign(z)*roll
@@ -189,7 +194,7 @@ int face_left(float a_y, float a_z, float roll)
 
 int face_right(float a_y, float a_z, float roll)
 {
-  float kp = 0.5, control;
+  float kp = 3, control;
   int turn_speed = 170;
   if(a_y > 0){
     if(a_z>0)
@@ -209,8 +214,9 @@ int face_right(float a_y, float a_z, float roll)
 
 int face_down(float a_y, float a_z, float roll)
 {
-  float kp = 0.5, control;
-  int turn_speed = 170;
+  float kp = 3, control;
+  //Serial.println("d");
+  int turn_speed = 200;
   if(a_z > 0){
     if(roll<0)
       //right to 0
@@ -221,7 +227,13 @@ int face_down(float a_y, float a_z, float roll)
   }
   else
     //err = -roll
-    control = -kp*roll;
+    control = kp*roll;
 
   return control;
 }
+/*int dleft()
+{
+  while(fabs(roll-90)>4) 
+  {
+  }
+}*/

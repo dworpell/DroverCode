@@ -79,7 +79,7 @@ void setup()
   Serial.println("Q");
   fan_control.attach(fan_esc_pwm);
   fan_control.write(50);
-  delay(15000);
+  delay(3000);
   
   // Initialize MPU6050
   while(!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G))
@@ -184,9 +184,9 @@ void setup()
   
   tof_width.startContinuous();
   tof_length.startContinuous();
-  delay(500);
-  fan_control.write(175);
-  delay(2000);
+  //delay(500);
+  //fan_control.write(50);
+  //delay(5000);
   TOFCounter=0;
 }
 
@@ -194,6 +194,7 @@ void setup()
 char a;
 int flag = 0;
 volatile uint16_t y_t=0;
+Vector norm, accel;
 
 float x_base = 0.0, y_base = 0.0, theta = 0.0, d_prev_l = 0.0, d_prev_r = 0.0;
 float d_l, d_r, del_l, del_r, heading, rad_wheel = 2/2.54, width = 15/2.54;
@@ -238,9 +239,9 @@ ISR (TIMER2_COMPA_vect)
     float del_t = timeStep;
     float e_t = timeStep*rollCounter + timeStep;
     //Gyro value gets filtered by MPU as well as accel values. This is the way the MPU works, so we would need to turn off DLPF for both
-    Vector norm = mpu.readNormalizeGyro();
+    norm = mpu.readNormalizeGyro();
     //Roughly 16 cycles to read from MPU for a single vector.
-    Vector accel = mpu.readRawAccel();
+    accel = mpu.readRawAccel();
     accel.XAxis +=  XAccel_Offset;
     accel.YAxis +=  YAccel_Offset;
     accel.ZAxis +=  ZAccel_Offset;
@@ -268,13 +269,13 @@ ISR (TIMER2_COMPA_vect)
     roll =  (1-alpha)*(roll + norm.XAxis * timeStep)+(alpha*accelX);
     //Serial.print(norm.XAxis);
     //Serial.print(" ");
-    Serial.print(filtered_accelX);
+    /*Serial.print(filtered_accelX);
     Serial.print(" ");
     Serial.print(filtered_accelY);
     Serial.print(" ");
     Serial.print(filtered_accelZ);
     Serial.print(" ");
-    Serial.println(roll);
+    Serial.println(roll);*/
     timerRoll=1;
     rollCounter=0;
   }
@@ -284,10 +285,11 @@ ISR (TIMER2_COMPA_vect)
   }
   TOFCounter++;
   //must have 8 timer ticks in order to avoid I2C conflict
-  if (TOFCounter==16 && TOFCounter>=8)
+  if (TOFCounter==6 && TOFCounter>=4)
   {
     //Serial.println("Yeet");
-    //y_t = tof_length.readRangeContinuousMillimeters();
+    y_t = tof_length.readRangeContinuousMillimeters();
+    //Serial.println(y_t);
     TOFCounter=0;
   }
 }
@@ -318,6 +320,7 @@ byte startflag=0;
 
 void loop()
 { 
+  fan_control.write(175);
   //forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 200);
 
 
@@ -465,11 +468,97 @@ void loop()
     //Serial.println(y_t);
     delay(20);
   }*/
+  //brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+  //delay(7000);
+  /*
+  if(fabs(roll) < 4)
+    up_flag=1;
+    fixed_speed = 0;
+  else
+    fixed_speed = 170;
+  
+  int control = face_left(accel.YAxis,accel.ZAxis,roll);
+  set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+  set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+  Serial.println(control);
+  */
+  
+  
+  delay(4000);
+  int control=0;
+  
+  /*while (fabs(roll-90)>4)
+  {
+    fixed_speed=170;
+    control = face_left(accel.YAxis,accel.ZAxis,roll);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+  }
+  
+  while (y_t < 200)
+  {
+    fixed_speed=170;
+    control =face_left(accel.YAxis,accel.ZAxis,roll);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+  }*/
+  //ZAxis is positive when robot faces up.
+  while (fabs(roll)>4 || accel.ZAxis >0)
+  {
+    fixed_speed=170;
+    control =face_down(accel.YAxis,accel.ZAxis,roll);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+    Serial.println(y_t);
+  }
+  while (y_t > 500)
+  {
+    fixed_speed=170;
+    control =face_down(accel.YAxis,accel.ZAxis,roll);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+    Serial.println(y_t);
+  }
+  /*while (fabs(roll+90)>4)
+  {
+    fixed_speed=170;
+    control =face_right(accel.YAxis,accel.ZAxis,roll);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+  }
+  while (y_t < 200)
+  {
+    fixed_speed=170;
+    control =face_right(accel.YAxis,accel.ZAxis,roll);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+  }*/
+  
+  
+  
+  
+  while (fabs(roll)>3 || accel.ZAxis<0)
+  {
+    fixed_speed=110;
+    control =face_up(accel.YAxis,accel.ZAxis,roll);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+    Serial.println(y_t);
+  }
+  while (y_t > 200)
+  {
+    fixed_speed=170;
+    control =face_up(accel.YAxis,accel.ZAxis,roll);
+    set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+    set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+    Serial.println(y_t);  
+  }
   brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-  delay(7000);
-  while (1){
+  delay(2000);
+  while(1)
+  {
     fan_control.write(50);
-    delay(200);
+    Serial.println(y_t);
   }
   /*
   Serial.println("DOWN");
