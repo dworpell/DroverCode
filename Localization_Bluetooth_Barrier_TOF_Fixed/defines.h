@@ -1,3 +1,5 @@
+#ifndef DEFINESFILE_H
+#define DEFINESFILE_H
 #define EIMSK  ((volatile byte*)0x3D)
 #define EIFR   ((volatile byte*)0x3C)
 #define EICRA  ((volatile byte*)0x69)
@@ -28,7 +30,13 @@
 //#define MCUSR ((volatile byte *)0xB4)
 //#define MCUSR ((volatile byte *)0xB4)
 //#define MCUSR ((volatile byte *)0xB4)*/
+#define RIGHT 0
+#define LEFT 1
 
+#define NORTH 0
+#define EAST  1
+#define SOUTH 2
+#define WEST  3
 
 byte Encoder0B,Encoder0A,Encoder1A,Encoder1B;
 int32_t EdgeCountRight=0;
@@ -117,3 +125,4 @@ ISR(PCINT0_vect) {
   Encoder1B=!Encoder1B;
   //Serial.println("B");
 }
+#endif
