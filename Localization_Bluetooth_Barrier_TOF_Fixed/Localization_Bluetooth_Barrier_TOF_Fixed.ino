@@ -63,11 +63,12 @@ float d2r = PI/180.0;
 
 int num_iter = 10000;
 
-int servo_init = 180;
-int servo_final = 5;
+int servo_init = 150;
+int servo_final = 15;
 
 int move_speed = 0;
 int fixed_speed = 170;
+
 volatile byte timerRoll=0;
 volatile byte I2C_Lock=0;
 volatile byte rollCounter=0;
@@ -382,6 +383,7 @@ void loop()
     servo_horn.write(servo_final);
     delay(300);
     int horn_limit_switch = digitalRead(A2);
+    Serial.println(horn_limit_switch);
     if(horn_limit_switch == LOW)
       left_flag = BARRIER_DETECTED;
     else
@@ -420,9 +422,9 @@ void loop()
     delay(300);
     horn_limit_switch = digitalRead(A2);
     if(horn_limit_switch == LOW)
-      left_flag = BARRIER_DETECTED;
+      bottom_flag = BARRIER_DETECTED;
     else
-      left_flag = EDGE_DETECTED;
+      bottom_flag = EDGE_DETECTED;
     servo_horn.write(servo_init);
     while (y_t <200)
     {
@@ -451,11 +453,13 @@ void loop()
     delay(300);
     horn_limit_switch = digitalRead(A2);
     if(horn_limit_switch == LOW)
-      left_flag = BARRIER_DETECTED;
+      right_flag = BARRIER_DETECTED;
     else
-      left_flag = EDGE_DETECTED;
+      right_flag = EDGE_DETECTED;
     servo_horn.write(servo_init);
     Serial.println("yeet");
+
+    
     while (fabs(roll)>5 || filtered_accelZ<0)
     {
       fixed_speed=-170;
@@ -471,6 +475,123 @@ void loop()
       set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
     }
   }
+
+  path_state = BARRIERCROSS;
+
+  if (path_state == BARRIERCROSS)
+  {
+    if(top_flag == BARRIER_DETECTED)
+    {
+      //Face UP First
+      while (fabs(roll)>6 || filtered_accelZ<0)
+      {
+        fixed_speed=110;
+        control =face_up(filtered_accelY, filtered_accelZ,roll,RIGHT);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+        //Serial.println(y_t);
+      }
+
+      //Move up to barrier
+      while (!digitalRead(A0) && !digitalRead(A1))
+      {
+        fixed_speed=170;
+        control =face_up(filtered_accelY, filtered_accelZ,roll,RIGHT);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      } 
+
+      //Cross
+      for(int i = 0; i<1500; i++)
+        forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 100);
+    }
+    
+    else if(bottom_flag == BARRIER_DETECTED)
+    {
+      //Face Down First
+      while (fabs(roll)>8)
+      {
+        fixed_speed=110;
+        control =face_down(filtered_accelY,filtered_accelZ,roll,LEFT);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      }
+
+      //Move down to the barrier
+      while (!digitalRead(A0) && !digitalRead(A1))
+      {
+        fixed_speed=110;
+        control =face_down(filtered_accelY, filtered_accelZ,roll,LEFT);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      }
+
+      //Cross
+      for(int i = 0; i<1500; i++)
+        forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 100);
+    }
+    
+    else if(left_flag == BARRIER_DETECTED)
+    {
+      //Face Left
+      while (fabs(roll-90)>8)
+      {
+        fixed_speed=-170;
+        control =face_left(filtered_accelY, filtered_accelZ,roll,LEFT);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      }
+
+      //Move left to barrier
+      while (!digitalRead(A0) && !digitalRead(A1))
+      {
+        fixed_speed=170;
+        control =face_left(filtered_accelY, filtered_accelZ,roll,LEFT);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      }
+
+      //Cross
+      for(int i = 0; i<1500; i++)
+        forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 100);
+    }
+    
+    else if(right_flag == BARRIER_DETECTED)
+    {
+      //Face Right
+      while (fabs(roll+90)>5)
+      {
+        fixed_speed=110;
+        control =face_right(filtered_accelY,filtered_accelZ,roll,LEFT);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      }
+
+      //Move right to barrier
+      while (!digitalRead(A0) && !digitalRead(A1))
+      {
+        fixed_speed=170;
+        control =face_right(filtered_accelY, filtered_accelZ,roll,LEFT);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      }
+
+      //Cross
+      for(int i = 0; i<1500; i++)
+        forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 100);
+    }
+    
+  }
+
+
+
+  if(path_state == SWEEP){
+    //Subroutine for Cleaning
+    
+  }
+
+ 
+  
   /*while (y_t>200)
   {
     move_speed=150;
@@ -478,7 +599,7 @@ void loop()
     //Serial.println(y_t);
     delay(20);
   }
-  turn(RIGHT);
+  turn(RIGHT);else
   for (int i=0; i<50; i++)
   {
     move_speed=0;
