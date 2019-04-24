@@ -114,11 +114,11 @@ void set_speed_left(int bin1, int bin2, int pwmb, int motor_speed){
     digitalWrite(bin2,LOW);
   }
 
-  if(motor_speed>250)
-    motor_speed = 250;
+  if(motor_speed>maxSpeed)
+    motor_speed = maxSpeed;
 
-  if(motor_speed<-250)
-    motor_speed = -250;
+  if(motor_speed<-maxSpeed)
+    motor_speed = -maxSpeed;
 
   analogWrite(pwmb,abs(motor_speed));
 }
@@ -136,11 +136,11 @@ void set_speed_right(int ain1, int ain2, int pwma, int motor_speed){
     digitalWrite(ain2,HIGH);
   }
 
-  if(motor_speed>250)
-    motor_speed = 250;
+  if(motor_speed>maxSpeed)
+    motor_speed = maxSpeed;
 
-  if(motor_speed<-250)
-    motor_speed = -250;
+  if(motor_speed<-maxSpeed)
+    motor_speed = -maxSpeed;
 
   analogWrite(pwma,abs(motor_speed));
 }
@@ -149,10 +149,10 @@ void set_speed_right(int ain1, int ain2, int pwma, int motor_speed){
 
 int face_up(float a_y, float a_z, float roll, int dir)
 {
-  float kp = 4, control;
+  float kp = 10, control;
   //Serial.println("u");
   int turn_speed = 170;
-  if(a_z < 1000){
+  if(a_z < 0){
     control = turn_speed-65;
     if (dir == RIGHT)
       control=-1*control;
@@ -174,7 +174,7 @@ int face_up(float a_y, float a_z, float roll, int dir)
 
 int face_left(float a_y, float a_z, float roll, int dir)
 {
-  float kp = 3, control;
+  float kp = left_kp, control;
   int turn_speed = 170;
   if(a_y < 0){
     if(dir==RIGHT)

@@ -19,7 +19,7 @@
 #define OUTERPERIM 1
 #define SWEEP 2
 #define BARRIERCROSS 3
-
+#define DEBUG_CROSS 4
 MPU6050 mpu;
 VL53L0X tof_width;
 VL53L0X tof_length;
@@ -60,11 +60,11 @@ float pitch = 0;
 float roll = 0;
 volatile float yaw = 0;
 float d2r = PI/180.0;
-
+volatile float alpha = 0.1, yaw3 = 0.0;
 int num_iter = 10000;
 
-int servo_init = 150;
-int servo_final = 15;
+int servo_init = 5;
+int servo_final = 100;
 
 int move_speed = 0;
 int fixed_speed = 170;
@@ -78,6 +78,7 @@ byte top_flag=0;
 byte bottom_flag=0;
 byte left_flag=0;
 byte right_flag=0;
+volatile float sign_change=1;
 void setup() 
 {
   Serial.begin(115200);
@@ -85,7 +86,7 @@ void setup()
   fan_control.attach(fan_esc_pwm);
   fan_control.writeMicroseconds(1000);
   delay(3000);
-  path_state = INITIAL;
+  path_state = SWEEP;
   // Initialize MPU6050
   while(!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G))
   {
@@ -178,6 +179,9 @@ void setup()
   rollCounter=0;
   yaw=0;
   roll=0;
+ 
+  tof_width.startContinuous();
+  tof_length.startContinuous();
   pitch=0;
   *TCNT2 =0x00; //Set Timer Counter to 0 for safety
   *TIFR2=0xff; //Clear interrupt flags for safety
@@ -187,8 +191,6 @@ void setup()
   *TIMSK2 = 0x02; // Enables Interrupts on OCRA = TCNT2
   *TCCR2B = 0x07; // Starts the timer
   
-  tof_width.startContinuous();
-  tof_length.startContinuous();
   //delay(500);
   //fan_control.write(50);
   //delay(5000);
@@ -204,12 +206,19 @@ Vector norm, accel;
 float x_base = 0.0, y_base = 0.0, theta = 0.0, d_prev_l = 0.0, d_prev_r = 0.0;
 float d_l, d_r, del_l, del_r, heading, rad_wheel = 2/2.54, width = 15/2.54;
 float x_g, y_g, x_new = 400,y_new = 250, yaw_goal = 0, yaw_error_prev = 0.0;
-float alpha = 0.1, yaw3 = 0.0;
-float dlpf_freq=3;
+
+float dlpf_freq=1;
+float dlpf_freq2=5;
+float dlpf_alpha2 = 2*PI*dlpf_freq2*timeStep/(2*PI*timeStep*dlpf_freq2 + 1); float dlpf_alpha_m2=1-dlpf_alpha2;
+float dlpf_freq3=30;
+float dlpf_alpha3 = 2*PI*dlpf_freq3*timeStep/(2*PI*timeStep*dlpf_freq3 + 1); float dlpf_alpha_m3=1-dlpf_alpha3;
+
+volatile byte TOFCountX=0;
 volatile float filtered_accelZ=0; float dlpf_alpha = 2*PI*dlpf_freq*timeStep/(2*PI*timeStep*dlpf_freq + 1); float dlpf_alpha_m=1-dlpf_alpha;
 volatile float filtered_accelY=0;
 volatile float filtered_accelX=0;
-
+volatile float filtered_xt=0;
+volatile uint16_t x_t=0;
 /***************************************************************************/
 byte current_direction =0;
 /*void getDirection()
@@ -233,7 +242,8 @@ byte current_direction =0;
 #define XAccel_Offset -1920
 #define YAccel_Offset 484
 #define ZAccel_Offset 4264
-
+volatile float filtered_gyro=0;
+volatile int pcontrol=0;
 ISR (TIMER2_COMPA_vect)
 {
   sei();
@@ -253,7 +263,7 @@ ISR (TIMER2_COMPA_vect)
     filtered_accelZ = accel.ZAxis*dlpf_alpha + filtered_accelZ*dlpf_alpha_m;
     filtered_accelY = accel.YAxis*dlpf_alpha + filtered_accelY*dlpf_alpha_m;
     filtered_accelX = accel.XAxis*dlpf_alpha + filtered_accelX*dlpf_alpha_m;
-
+    filtered_gyro   = norm.XAxis*dlpf_alpha2 + filtered_gyro*dlpf_alpha_m2;
          
     // Calculate Pitch, Roll and Yaw
      float accelX= atan2((filtered_accelY/16384.0),sqrt(pow((filtered_accelX/16384.0),2) + pow((filtered_accelZ/16384.0),2)))*rad_to_deg;
@@ -261,20 +271,29 @@ ISR (TIMER2_COMPA_vect)
      float accelY= atan2(-1*(filtered_accelX/16384.0),sqrt(pow((filtered_accelY/16384.0),2) + pow((filtered_accelZ/16384.0),2)))*rad_to_deg;
      /*---Y---*/
     //Serial.println(accel.YAxis);
-    float alpha=0.1;
+    float gyro_angle_change = sign_change*filtered_gyro * timeStep;
+    //Serial.print(accelX);
+    //Serial.print("   ");
+    //Serial.print(gyro_angle_change);
+    //Serial.print("   ");
     if (!isnan(accelX))
     pitch = (1-alpha)*(pitch + norm.YAxis * timeStep)+(alpha*accelY);
     if (!isnan(accelY))
-    roll =  (1-alpha)*(roll + norm.XAxis * timeStep)+(alpha*accelX);
+    {
+      roll =  (1-alpha)*(roll + gyro_angle_change)+(alpha*accelX);
+    }
+    //Serial.println(roll);
     //Serial.print(norm.XAxis);
     //Serial.print(" ");
     //Serial.print(filtered_accelX);
     //Serial.print(" ");
-    /*Serial.print(filtered_accelY);
-    Serial.print(" ");
-    Serial.print(filtered_accelZ);
-    Serial.print(" ");
-    Serial.println(roll);*/
+    //Serial.println(filtered_accelY);
+    //Serial.print(" ");
+    //Serial.print(filtered_accelZ);
+    //Serial.print(" ");
+    //Serial.print(pcontrol);
+    //Serial.print(" ");
+    //Serial.println(roll);
     timerRoll=1;
     rollCounter=0;
   }
@@ -283,14 +302,31 @@ ISR (TIMER2_COMPA_vect)
     rollCounter++;
   }
   TOFCounter++;
+  TOFCountX++;
+  byte read_mpu_y=0;
   //must have 8 timer ticks in order to avoid I2C conflict
   if (TOFCounter==6 && TOFCounter>=4)
   {
     //Serial.println("Yeet");
     y_t = tof_length.readRangeContinuousMillimeters();
-    Serial.println(y_t);
+    
     TOFCounter=0;
+    read_mpu_y=1;
   }
+  if (TOFCountX==7 && TOFCountX>=4)
+  {
+    if (read_mpu_y==0)
+    {
+      x_t = tof_width.readRangeContinuousMillimeters();
+      if (x_t <2000)
+      filtered_xt = accel.XAxis*dlpf_alpha3 + filtered_xt*dlpf_alpha_m3;
+    }
+    TOFCountX=0;
+    
+  }
+  //Serial.print(y_t);
+  //Serial.print(" ");
+  //Serial.println(x_t);
 }
 void turn(int dir)
 {
@@ -319,10 +355,11 @@ byte startflag=0;
 void loop()
 { 
   //Serial.println("1");
+  alpha=0.1;
   fan_control.writeMicroseconds(2000);
   delay(5000);
   //forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 100);
-  
+  bottom_flag=BARRIER_DETECTED;
 
   //ENU frame +90deg x_g to x_base
   //If power is lost to the TOF sesnor. All the arduino bricks.
@@ -334,6 +371,8 @@ void loop()
   if (path_state==INITIAL)
   {
     //Serial.println("Test");
+    alpha=0;
+    sign_change=1;
     while (fabs(roll)>6 || filtered_accelZ<0)
     {
       fixed_speed=110;
@@ -341,15 +380,20 @@ void loop()
       set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
       set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
       //Serial.println(y_t);
+      Serial.println(control);
+      //pcontrol=control;
     }
     //brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
     //Waitfornext timer, read TOF Width and decide which quadrant you are in.
+    alpha=1;
     while (!digitalRead(A0) && !digitalRead(A1))
     {
       fixed_speed=170;
       control =face_up(filtered_accelY, filtered_accelZ,roll,RIGHT);
       set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
       set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+     // pcontrol=control;
+      Serial.println(control);
     } 
     //Serial.println("l");
     brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
@@ -365,19 +409,40 @@ void loop()
   }
   if (path_state == OUTERPERIM)
   {
+    alpha=1;
+    left_kp=3.5;
+    maxSpeed=170;
+    while (y_t <200)
+    {
+      fixed_speed=-20;
+      control =face_up(filtered_accelY, filtered_accelZ,roll,RIGHT);
+      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+    }
+    left_kp=3.5;
+    alpha=0;
+    maxSpeed=250;
     while (fabs(roll-90)>8)
     {
-      fixed_speed=-170;
+      fixed_speed=150;
       control =face_left(filtered_accelY, filtered_accelZ,roll,LEFT);
       set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
       set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
     }
+    alpha=1;
+    left_kp=4;
+    maxSpeed=250;
     while (!digitalRead(A0) && !digitalRead(A1))
     {
       fixed_speed=170;
+      float bump_value =0;
+      /*if (fabs(filtered_xt-100)>0)
+      {
+        bump_value = (filtered_xt-100)*0.3;
+      }*/
       control =face_left(filtered_accelY, filtered_accelZ,roll,LEFT);
-      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
-      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control+bump_value);
+      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control-bump_value);
     } 
     brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
     servo_horn.write(servo_final);
@@ -398,17 +463,16 @@ void loop()
       set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
       set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
     }
+    sign_change=-1;
+    alpha=0;
     while (fabs(roll)>8)
     {
-      
       fixed_speed=110;
       control =face_down(filtered_accelY,filtered_accelZ,roll,LEFT);
       set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
       set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
     }
-    Serial.println("Done Turning");
-    //brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-    //delay(2000);
+    alpha=1;
     Serial.println("Moving");
     while (!digitalRead(A0) && !digitalRead(A1))
     {
@@ -426,7 +490,7 @@ void loop()
     else
       bottom_flag = EDGE_DETECTED;
     servo_horn.write(servo_init);
-    while (y_t <200)
+    while (y_t <400)
     {
       fixed_speed=-170;
       control =face_down(filtered_accelY, filtered_accelZ,roll,LEFT);
@@ -434,6 +498,7 @@ void loop()
       set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
     }
     Serial.println("Turning Right");
+    alpha=0;
     while (fabs(roll+90)>5)
     {
       fixed_speed=110;
@@ -441,6 +506,7 @@ void loop()
       set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
       set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
     }
+    alpha=1;
     Serial.println("Yurned Right");
     while (!digitalRead(A0) && !digitalRead(A1))
     {
@@ -459,14 +525,24 @@ void loop()
     servo_horn.write(servo_init);
     Serial.println("yeet");
 
-    
-    while (fabs(roll)>5 || filtered_accelZ<0)
+    while (y_t<200)
     {
       fixed_speed=-170;
+      control =face_right(filtered_accelY,filtered_accelZ,roll,LEFT);
+      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+    }
+    alpha=0;
+    sign_change=1;
+    while (fabs(roll)>5 || filtered_accelZ<0)
+    {
+      fixed_speed=110;
       control =face_up(filtered_accelY,filtered_accelZ,roll,LEFT);
       set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
       set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
     }
+    //Maybe do this deteciton by distance
+    alpha=0.1;
     while (!digitalRead(A0) && !digitalRead(A1))
     {
       fixed_speed=170;
@@ -474,10 +550,128 @@ void loop()
       set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
       set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
     }
+    while (y_t<200)
+    {
+      fixed_speed=-110;
+      control =face_up(filtered_accelY, filtered_accelZ,roll,LEFT);
+      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+    }
+    alpha=0;
+    while (fabs(roll-90)>8)
+    {
+      fixed_speed=140;
+      control =face_left(filtered_accelY, filtered_accelZ,roll,LEFT);
+      set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+      set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+    }
+    //path_state=SWEEP;
   }
-
-  path_state = BARRIERCROSS;
-
+  
+  if (path_state == SWEEP)
+  {
+    byte side_done_flag =0;
+    byte next_pass_done =0;
+    //if (top_flag==BARRIERDETECTED || bottom_flag==BARRIERDETECTED)
+    sign_change=-1;
+    float start_distance=x_t;
+    while (!side_done_flag)
+    {
+      //Serial.println("s");
+      start_distance=x_t;
+      alpha=1;
+      while (y_t>250)
+      {
+        float bump_val_left =0;
+        float bump_val_right=0;
+        if (start_distance <100)
+        {
+          if (fabs(start_distance - x_t) > 20)
+          {
+            if (start_distance > x_t)
+              bump_val_right=(start_distance - x_t) * 0.5;
+            else 
+              bump_val_left=(x_t-start_distance) * 0.5;
+          }
+        }
+        fixed_speed=170;
+        control =face_left(filtered_accelY, filtered_accelZ,roll,LEFT);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control+bump_val_left);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control + bump_val_right);
+      }
+      alpha=0;
+      sign_change=-1;
+      if (next_pass_done==1)
+      {
+        side_done_flag=1;
+        path_state=BARRIERCROSS;
+        break;
+      }
+      
+      while (fabs(roll+90)>5)
+      {
+        fixed_speed=80;
+        control =face_right(filtered_accelY,filtered_accelZ,roll,LEFT);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      }
+      
+      alpha=1;
+      
+      delay(100);
+      start_distance=x_t;
+      while (y_t>250)
+      {
+        fixed_speed=170;
+        float bump_val_left =0;
+        float bump_val_right=0;
+        if (start_distance <500)
+        {
+          if (fabs(start_distance - x_t) > 40)
+          {
+            if (start_distance > x_t)
+              bump_val_right=(start_distance - x_t) * 0.5;
+            else 
+              bump_val_left=(x_t-start_distance) * 0.5;
+          }
+        }
+        control =face_right(filtered_accelY,filtered_accelZ,roll,LEFT);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+      }
+      if (x_t<200)
+      {
+        path_state=BARRIERCROSS;
+        side_done_flag=1;
+        break;
+      }
+      else
+      {
+        if (x_t<350)
+        {
+          next_pass_done=1;
+        }
+        alpha=0;
+        sign_change=-1;
+        left_kp=3;
+        Serial.println("R");
+        while (fabs(roll-90)>8)
+        {
+          if (filtered_accelZ<0)
+            sign_change=-1;
+          else
+            sign_change=1;
+          fixed_speed=80;
+          control =face_left(filtered_accelY, filtered_accelZ,roll,RIGHT);
+          set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+          set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+          //Serial.println(control);
+        }
+        //break;
+      }
+    }
+  }
+  bottom_flag=BARRIER_DETECTED;
   if (path_state == BARRIERCROSS)
   {
     if(top_flag == BARRIER_DETECTED)
@@ -509,26 +703,70 @@ void loop()
     else if(bottom_flag == BARRIER_DETECTED)
     {
       //Face Down First
-      while (fabs(roll)>8)
+      if (filtered_accelY >0)
       {
-        fixed_speed=110;
-        control =face_down(filtered_accelY,filtered_accelZ,roll,LEFT);
-        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
-        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+        alpha=0.01;
+        sign_change=1;
+       /* while (fabs(roll)>4 || filtered_accelZ<0)
+        {
+          fixed_speed=20;
+          control =face_up(filtered_accelY, filtered_accelZ,roll,RIGHT);
+          set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+          set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+          //Serial.println(y_t);
+        }
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, 120);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, 120);
+        delay(50);
+        */while (fabs(roll)>8 || filtered_accelZ>0)
+        {
+          fixed_speed=0;
+          if (filtered_accelZ<0)
+            sign_change=-1;
+          else
+            sign_change=1;
+          control =face_down(filtered_accelY,filtered_accelZ,roll,LEFT);
+          set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+          set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+        } 
       }
-
+      else
+      {
+        //FACING RIGHT
+        /*while (fabs(roll)>6 || filtered_accelZ<0)
+        {
+          fixed_speed=110;
+          control =face_up(filtered_accelY, filtered_accelZ,roll,LEFT);
+          set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+          set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+          //Serial.println(y_t);
+        }*/
+        //Facing Right 
+        alpha=0;
+        sign_change=-1;
+        while (fabs(roll)>8 || filtered_accelZ>0 )
+        {
+          fixed_speed=-110;
+          control =face_down(filtered_accelY,filtered_accelZ,roll,RIGHT);
+          set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+          set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+        }
+      }
+      alpha=1;
       //Move down to the barrier
-      while (!digitalRead(A0) && !digitalRead(A1))
+      /*while (!digitalRead(A0) && !digitalRead(A1))
       {
         fixed_speed=110;
         control =face_down(filtered_accelY, filtered_accelZ,roll,LEFT);
         set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
         set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
-      }
-
+      }*/
       //Cross
-      for(int i = 0; i<1500; i++)
-        forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 100);
+      for(int i = 0; i<1000; i++)
+      {
+        forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 140);
+        delay(4); 
+      }
     }
     
     else if(left_flag == BARRIER_DETECTED)
@@ -582,15 +820,14 @@ void loop()
     }
     
   }
-
-
-
-  if(path_state == SWEEP){
-    //Subroutine for Cleaning
-    
+ if (path_state == DEBUG_CROSS)
+ {
+  for(int i = 0; i<1000; i++)
+  {
+    forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 140);
+    delay(20); 
   }
-
- 
+ }
   
   /*while (y_t>200)
   {
@@ -780,7 +1017,7 @@ void loop()
   while(1)
   {
     fan_control.writeMicroseconds(1000);
-    Serial.println(y_t);
+   // Serial.println(y_t);
   }
   /*
   Serial.println("DOWN");

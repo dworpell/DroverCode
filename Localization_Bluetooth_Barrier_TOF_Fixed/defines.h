@@ -41,7 +41,8 @@
 byte Encoder0B,Encoder0A,Encoder1A,Encoder1B;
 int32_t EdgeCountRight=0;
 int32_t EdgeCountLeft =0;
-
+float left_kp=4;
+byte maxSpeed=250;
 ISR(INT0_vect) {
   //Serial.println(EdgeCount);
   if(Encoder0A)
