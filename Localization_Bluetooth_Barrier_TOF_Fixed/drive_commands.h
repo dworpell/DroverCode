@@ -146,10 +146,10 @@ void set_speed_right(int ain1, int ain2, int pwma, int motor_speed){
 }
 
 
-
 int face_up(float a_y, float a_z, float roll, int dir)
 {
-  float kp = 10, control;
+  float kp = up_kp;
+  float control= 0;
   //Serial.println("u");
   int turn_speed = 170;
   if(a_z < 0){
@@ -174,7 +174,8 @@ int face_up(float a_y, float a_z, float roll, int dir)
 
 int face_left(float a_y, float a_z, float roll, int dir)
 {
-  float kp = left_kp, control;
+  float kp = left_kp;
+  float control=0;
   int turn_speed = 170;
   if(a_y < 0){
     if(dir==RIGHT)
@@ -195,7 +196,8 @@ int face_left(float a_y, float a_z, float roll, int dir)
 
 int face_right(float a_y, float a_z, float roll, int dir)
 {
-  float kp = 3, control;
+  float kp = right_kp;
+  float control=0;
   int turn_speed = 170;
   if(a_y > 0){
     if(dir==RIGHT)
@@ -215,7 +217,8 @@ int face_right(float a_y, float a_z, float roll, int dir)
 
 int face_down(float a_y, float a_z, float roll, int dir)
 {
-  float kp = 3.5, control;
+  float kp = down_kp;
+  float control= 0;
   //Serial.println("d");
   int turn_speed = 250;
   if(a_z > 0){
