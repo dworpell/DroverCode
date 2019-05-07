@@ -80,6 +80,7 @@ byte right_flag=0;
 volatile float sign_change=1;
 void setup() 
 {
+  brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
   Serial.begin(115200);
   Serial.println("Q");
   fan_control.attach(fan_esc_pwm);
@@ -255,9 +256,10 @@ byte current_direction =0;
 //7.) The offset is the difference between (+ or -) 16384 and the value you noted down. 
 //8.) Replace the define statements below with the appropriate values.
 //########################################################################//
-/*#define XAccel_Offset -1112
-#define YAccel_Offset 542
-#define ZAccel_Offset 450*/
+/*#define XAccel_Offset -1738
+#define YAccel_Offset 0
+#define ZAccel_Offset -1253*/
+//Yellow Boy below
 #define XAccel_Offset -1920
 #define YAccel_Offset 484
 #define ZAccel_Offset 4264
@@ -964,7 +966,7 @@ void loop()
     }
     alpha=1;
     brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-    delay(1000);
+    delay(500);
     alpha=0;
     sign_change=-1;
     while (fabs(roll-90)>8)
@@ -995,8 +997,8 @@ void loop()
   //delay(50);
   }
  }
-  brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
-  delay(2000);
+  //brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+  //delay(2000);
   if (path_done==1)
   {
     while(1)
