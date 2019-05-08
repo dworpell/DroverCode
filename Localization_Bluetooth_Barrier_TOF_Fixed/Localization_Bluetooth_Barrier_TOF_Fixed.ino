@@ -190,15 +190,16 @@ void setup()
   while (!digitalRead(A0) && !digitalRead(A1))
   {
   }
-  if (digitalRead(A0))
+  delay(10);
+  if (digitalRead(A1))
   {
     path_state=SWEEP;
-    y_t_limit=400;
+    //y_t_limit=400;
   }
-  else if (digitalRead(A1))
+  if (digitalRead(A0))
   {
     path_state=SWARM_SIDE;
-    y_t_limit=275;
+    //y_t_limit=275;
   }
   digitalWrite(13,HIGH);
   delay(400);
@@ -235,7 +236,7 @@ Vector norm, accel;
 float dlpf_freq=1;
 float dlpf_freq2=5;
 float dlpf_alpha2 = 2*PI*dlpf_freq2*timeStep/(2*PI*timeStep*dlpf_freq2 + 1); float dlpf_alpha_m2=1-dlpf_alpha2;
-float dlpf_freq3=35;
+float dlpf_freq3=30;
 float dlpf_alpha3 = 2*PI*dlpf_freq3*timeStep/(2*PI*timeStep*dlpf_freq3 + 1); float dlpf_alpha_m3=1-dlpf_alpha3;
 
 volatile byte TOFCountX=0;
@@ -711,14 +712,17 @@ void loop()
       
       while (fabs(roll+90)>5)
       {
-        fixed_speed=120;
+        fixed_speed=30;
         control =face_right(filtered_accelY,filtered_accelZ,roll,LEFT);
         set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
         set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+        if (fabs(roll+90)<18)
+          right_kp=6;
       }
+      right_kp=3; 
       alpha=1;
       
-      delay(200);
+      delay(300);
       start_distance=filtered_xt;
       if (second_side==1)
         y_t_limit=250;
@@ -729,7 +733,7 @@ void loop()
         fixed_speed=170;
         float bump_val_left =0;
         float bump_val_right=0;
-        if (start_distance <500)
+        if (start_distance <700)
         {
           float f=filtered_xt;
           if (fabs(start_distance - f) > 10)
@@ -788,7 +792,7 @@ void loop()
         left_kp=3;
         while (fabs(roll-90)>5)
         {
-          fixed_speed=80;
+          fixed_speed=40;
           control =face_left(filtered_accelY, filtered_accelZ,roll,RIGHT);
           set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
           set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
@@ -1009,7 +1013,7 @@ void loop()
     } 
     for(int i = 0; i<300; i++)
     {
-      forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 140);
+      forward(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, 170);
       delay(2); 
     }
     alpha=1;
@@ -1039,10 +1043,10 @@ void loop()
  {
   while (1){
   //fan_control.writeMicroseconds(1000);
-  //Serial.print(digitalRead(A0));
-  //Serial.print(digitalRead(A1));
+  Serial.print(digitalRead(A0));
+  Serial.print(digitalRead(A1));
   //Serial.println(digitalRead(A2));
-  //delay(50);
+  delay(50);
   }
  }
   //brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
