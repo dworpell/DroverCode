@@ -78,6 +78,7 @@ byte bottom_flag=0;
 byte left_flag=0;
 byte right_flag=0;
 volatile float sign_change=1;
+int y_t_limit=0;
 void setup() 
 {
   brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
@@ -190,9 +191,15 @@ void setup()
   {
   }
   if (digitalRead(A0))
+  {
     path_state=SWEEP;
+    y_t_limit=400;
+  }
   else if (digitalRead(A1))
+  {
     path_state=SWARM_SIDE;
+    y_t_limit=275;
+  }
   digitalWrite(13,HIGH);
   delay(400);
   digitalWrite(13,LOW);
@@ -215,6 +222,7 @@ void setup()
   //delay(5000);
   TOFCounter=0;
   delay(500);
+  //path_state=DEBUG_CROSS;
 }
 
 
@@ -227,7 +235,7 @@ Vector norm, accel;
 float dlpf_freq=1;
 float dlpf_freq2=5;
 float dlpf_alpha2 = 2*PI*dlpf_freq2*timeStep/(2*PI*timeStep*dlpf_freq2 + 1); float dlpf_alpha_m2=1-dlpf_alpha2;
-float dlpf_freq3=30;
+float dlpf_freq3=35;
 float dlpf_alpha3 = 2*PI*dlpf_freq3*timeStep/(2*PI*timeStep*dlpf_freq3 + 1); float dlpf_alpha_m3=1-dlpf_alpha3;
 
 volatile byte TOFCountX=0;
@@ -256,17 +264,19 @@ byte current_direction =0;
 //7.) The offset is the difference between (+ or -) 16384 and the value you noted down. 
 //8.) Replace the define statements below with the appropriate values.
 //########################################################################//
-/*#define XAccel_Offset -1738
+#define XAccel_Offset -1738
 #define YAccel_Offset 0
-#define ZAccel_Offset -1253*/
+#define ZAccel_Offset -1253
 //Yellow Boy below
-#define XAccel_Offset -1920
-#define YAccel_Offset 484
-#define ZAccel_Offset 4264
+/*#define XAccel_Offset -1920
+//took away 60 from y accel
+#define YAccel_Offset 424 
+#define ZAccel_Offset 4264*/
 volatile float filtered_gyro=0;
 volatile uint16_t fanSpeed=1000;
 volatile byte debounce =0;
 volatile uint8_t fake_delay=0;
+
 ISR (TIMER2_COMPA_vect)
 {
   sei();
@@ -300,6 +310,8 @@ ISR (TIMER2_COMPA_vect)
       fan_control.writeMicroseconds(fanSpeed); 
       debounce=1;
     }
+
+    /**SETTING pow((filtered_accelX/16384.0),2)=0 in the atan to fight offset**/
     // Calculate Pitch, Roll and Yaw
      float accelX= atan2((filtered_accelY/16384.0),sqrt(pow((filtered_accelX/16384.0),2) + pow((filtered_accelZ/16384.0),2)))*rad_to_deg;
      /*---Y---*/
@@ -345,13 +357,14 @@ ISR (TIMER2_COMPA_vect)
     TOFCounter=0;
     read_mpu_y=1;
   }
-  if (TOFCountX==7 && TOFCountX>=4)
+  if (TOFCountX==4 && TOFCountX>=4)
   {
     if (read_mpu_y==0)
     {
       x_t = tof_width.readRangeContinuousMillimeters();
       if (x_t <2000)
-      filtered_xt = accel.XAxis*dlpf_alpha3 + filtered_xt*dlpf_alpha_m3;
+      filtered_xt = x_t*dlpf_alpha3 + filtered_xt*dlpf_alpha_m3;
+      //Serial.println(filtered_xt);
     }
     TOFCountX=0;
     
@@ -654,21 +667,26 @@ void loop()
     {
       //fan_control.writeMicroseconds(2000);
       //Serial.println("s");
-      delay(100);
-      start_distance=x_t;
+      delay(200);
+      start_distance=filtered_xt;
       alpha=1;
-      while (y_t>275)
+      if (next_pass_done==1)
+        y_t_limit=100;
+      else
+        y_t_limit=275;
+      while ((y_t>y_t_limit) && !digitalRead(A0) && !digitalRead(A1))
       {
         float bump_val_left =0;
         float bump_val_right=0;
-        if (start_distance <100)
+        if (start_distance <300)
         {
-          if (fabs(start_distance - x_t) > 10)
+          float f=filtered_xt;
+          if (fabs(start_distance - f) > 10)
           {
-            if (start_distance > x_t)
-              bump_val_right=(start_distance - x_t);
+            if (start_distance > f)
+              bump_val_right=(start_distance - f);
             else 
-              bump_val_left=(x_t-start_distance);
+              bump_val_left=(f-start_distance);
           }
         }
         fixed_speed=170;
@@ -700,31 +718,57 @@ void loop()
       }
       alpha=1;
       
-      delay(100);
-      start_distance=x_t;
-      while (y_t>250)
+      delay(200);
+      start_distance=filtered_xt;
+      if (second_side==1)
+        y_t_limit=250;
+      else
+        y_t_limit=450;
+      while (y_t>y_t_limit)
       {
         fixed_speed=170;
         float bump_val_left =0;
         float bump_val_right=0;
         if (start_distance <500)
         {
-          if (fabs(start_distance - x_t) > 40)
+          float f=filtered_xt;
+          if (fabs(start_distance - f) > 10)
           {
-            if (start_distance > x_t)
-              bump_val_right=(start_distance - x_t) * 0.5;
+            if (start_distance > f)
+              bump_val_right=(start_distance - f);
             else 
-              bump_val_left=(x_t-start_distance) * 0.5;
+              bump_val_left=(f-start_distance);
           }
         }
         control =face_right(filtered_accelY,filtered_accelZ,roll,LEFT);
-        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
-        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+        set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control + bump_val_left);
+        set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control+bump_val_right);
       }
       if (x_t<250)
       {
         //if (second_side==1)
         //{
+          //Finish off the pass as far as they can
+          y_t_limit=40;
+          while ((y_t>y_t_limit) && !digitalRead(A0) && !digitalRead(A1))
+          {
+            fixed_speed=170;
+            float bump_val_left =0;
+            float bump_val_right=0;
+            /*if (start_distance <500)
+            {
+              if (fabs(start_distance - x_t) > 40)
+              {
+                if (start_distance > x_t)
+                  bump_val_right=(start_distance - x_t) * 0.5;
+                else 
+                  bump_val_left=(x_t-start_distance) * 0.5;
+              }
+            }*/
+            control =face_right(filtered_accelY,filtered_accelZ,roll,LEFT);
+            set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
+            set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+          }
           path_state=SECONDSIDE;
           path_done=1;
         //}
@@ -742,16 +786,20 @@ void loop()
         alpha=0;
         sign_change=-1;
         left_kp=3;
-        while (fabs(roll-90)>8)
+        while (fabs(roll-90)>5)
         {
           fixed_speed=80;
           control =face_left(filtered_accelY, filtered_accelZ,roll,RIGHT);
           set_speed_left(motor_left_in_1, motor_left_in_2, motor_left_pwm, fixed_speed - control);
           set_speed_right(motor_right_in_1, motor_right_in_2, motor_right_pwm, fixed_speed + control);
+          if (fabs(roll-90)<15)
+            left_kp=6;
         }
+        left_kp=3.5;
       }
     }
   }
+  
   bottom_flag=BARRIER_DETECTED;
   if (path_state == BARRIERCROSS)
   {
@@ -969,7 +1017,7 @@ void loop()
     delay(500);
     alpha=0;
     sign_change=-1;
-    while (fabs(roll-90)>8)
+    while (fabs(roll-90)>5)
     {
       /*if (filtered_accelZ<0)
         sign_change=-1;
@@ -1001,13 +1049,15 @@ void loop()
   //delay(2000);
   if (path_done==1)
   {
+    brake_hard(motor_right_in_1, motor_right_in_2, motor_right_pwm, motor_left_in_1, motor_left_in_2, motor_left_pwm, move_speed);
+    delay(2000);
     while(1)
     {
       fanSpeed=1000;
       fan_control.writeMicroseconds(1000);
      // Serial.println(y_t);
     }
-  }
+  } 
   /*
   if(x_g <= 5000){
   // Output raw
